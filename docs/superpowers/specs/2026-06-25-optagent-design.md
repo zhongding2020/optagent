@@ -13,7 +13,7 @@ OptAgent is a framework that combines AI agent capabilities with structured proc
 - **Agent-guided** — LLM agent leads the user through each optimization step
 - **Knowledge-augmented** — agent proactively queries knowledge bases to ground its reasoning in domain documents
 - **Visual-first** — real-time graph visualization, interactive charts, live streaming
-- **Extensible** — add new skills or knowledge sources without changing graph code
+- **Extensible** — add new skills or knowledge sources, and define entirely new workflows, without changing framework code
 
 ## Architecture
 
@@ -25,7 +25,7 @@ OptAgent is a framework that combines AI agent capabilities with structured proc
                             | WebSocket + REST
 +---------------------------v----------------+
 |  FastAPI Server                             |
-|  Routes: sessions, skills, data, kb        |
+|  Routes: sessions, workflows, skills, kb   |
 |  WebSocket: event encoding + push          |
 |  SessionManager: tasks + cancel tokens     |
 +-------+-------------------+----------------+
@@ -33,11 +33,18 @@ OptAgent is a framework that combines AI agent capabilities with structured proc
 +-------v--------+  +-------v--------+
 | Agent Runtime  |  | Knowledge Base |
 | deepagents +   |  |                |
-| LangGraph      |  | Vector Store   |
-| SkillsMiddleware|  | (Chroma)       |
-| + KB Tool      |  | + Files (PDF/  |
-|                |  |   Markdown)    |
-+----------------+  +----------------+
+| LangGraph      |  | Chroma         |
+| SkillsMiddleware|  | + PDF/Markdown |
+| + KB Tool      |  |                |
+|                |  |                |
++-------+--------+  +----------------+
+        |
++-------v--------+
+| Workflow       |
+| Builder        |
+| YAML -> Graph  |
+| (动态生成)      |
++----------------+
 ```
 
 ## Technology Stack
@@ -56,6 +63,7 @@ OptAgent is a framework that combines AI agent capabilities with structured proc
 | Real-time | WebSocket (JSON Lines) | Bidirectional, terminate support |
 | Charts | ECharts | Heatmaps, Pareto, scatter for DOE |
 | Skills Format | Markdown + YAML frontmatter | deepagents native, hot-pluggable |
+| Workflow Definition | YAML | Declarative, no code changes needed for new workflows |
 | KB Ingestion | Python script + cron / webhook | Re-index on document update |
 
 ## Project Structure
@@ -72,15 +80,17 @@ optagent/
 |   |   +-- skills/
 |   |   |   +-- registry.py             # SkillRegistry - hot-plug
 |   |   |   +-- types.py                # SkillMetadata types
-|   |   +-- graph/
-|   |   |   +-- builder.py              # StateGraph builder
-|   |   |   +-- nodes.py                # Node definitions + error handling
+|   |   +-- workflow/
+|   |   |   +-- builder.py              # WorkflowBuilder - YAML -> StateGraph
+|   |   |   +-- loader.py               # Workflow YAML loader + validation
+|   |   |   +-- types.py                # WorkflowDefinition type
 |   |   +-- server/
 |   |   |   +-- routes/
 |   |   |   |   +-- sessions.py
+|   |   |   |   +-- workflows.py        # /api/workflows - list/run
 |   |   |   |   +-- skills.py
 |   |   |   |   +-- data.py
-|   |   |   |   +-- kb.py               # /api/kb - manage index
+|   |   |   |   +-- kb.py
 |   |   |   +-- ws.py                   # WebSocket manager
 |   |   |   +-- session_manager.py      # Session lifecycle
 |   |   +-- models/
@@ -91,6 +101,8 @@ optagent/
 |   |   +-- kb/
 |   |       +-- ingestion.py            # Document ingestion pipeline
 |   |       +-- retriever.py            # Query + rerank logic
+|   +-- workflows/                      # Workflow YAML definitions
+|   |   +-- process-optimization.yaml   # 工艺参数优化工作流
 |   +-- skills/                         # Example skills
 |   |   +-- define-objective/SKILL.md
 |   |   +-- identify-params/SKILL.md
@@ -98,8 +110,8 @@ optagent/
 |   |   +-- collect-data/SKILL.md
 |   |   +-- analyze-results/SKILL.md
 |   |   +-- generate-report/SKILL.md
-|   |   +-- knowledge-retrieval/SKILL.md   # KB 查询 skill
-|   +-- kb_docs/                        # Example KB documents
+|   |   +-- knowledge-retrieval/SKILL.md
+|   +-- kb_docs/
 |   |   +-- doe-handbook/
 |   |   +-- process-specs/
 |   +-- config.yaml                     # Application configuration
@@ -114,7 +126,7 @@ optagent/
 |   |   |   +-- WorkflowDetail.tsx
 |   |   |   +-- Analysis.tsx
 |   |   |   +-- Chat.tsx
-|   |   |   +-- KnowledgeBase.tsx       # KB document management page
+|   |   |   +-- KnowledgeBase.tsx
 |   |   +-- components/
 |   |   |   +-- charts/
 |   |   |   |   +-- FactorRankBar.tsx
@@ -139,39 +151,91 @@ optagent/
 +-- README.md
 ```
 
-## Workflow Graph Design
+## Workflow System
 
-The process optimization workflow is a LangGraph StateGraph with 6 sequential nodes. Each node uses a deepagents agent (with SkillsMiddleware) to:
-1. Read state (previous step results)
-2. SkillsMiddleware injects available skill descriptions into system prompt
-3. Agent selects and reads the matching SKILL.md based on current context
-4. Agent follows skill instructions to guide user through the step
-5. As needed, agent queries knowledge base via `query_knowledge_base` tool
-6. Output updates state, transitions to next node
+### Design Decision
 
+Graphs are not hardcoded. Each workflow is defined as a YAML file. WorkflowBuilder reads the YAML and dynamically generates a LangGraph StateGraph at load time. This makes the framework truly extensible — adding a new workflow type does not require Python code changes.
+
+### Workflow YAML Format
+
+```yaml
+# workflows/process-optimization.yaml
+name: process-optimization
+description: 工艺参数优化标准工作流
+version: 1.0
+
+nodes:
+  - id: define_objective
+    name: 梳理优化目标
+    skill_match: ["define-objective", "objective"]
+    error_strategy:
+      max_retries: 3
+      on_failure: terminate
+
+  - id: identify_params
+    name: 识别关键工艺参数
+    skill_match: ["identify-params", "parameter"]
+    error_strategy:
+      max_retries: 3
+      on_failure: terminate
+
+  - id: design_doe
+    name: 试验设计(DOE)
+    skill_match: ["design-doe", "doe", "experiment-design"]
+    error_strategy:
+      max_retries: 3
+      on_failure: terminate
+
+  - id: collect_data
+    name: 收集试验结果
+    skill_match: ["collect-data", "experiment"]
+    error_strategy:
+      max_retries: 2
+      on_failure: skip           # 用户可以手动补充数据后resume
+
+  - id: analyze_results
+    name: 数据分析与因子提取
+    skill_match: ["analyze-results", "analysis", "factor"]
+    error_strategy:
+      max_retries: 2
+      on_failure: terminate
+
+  - id: generate_report
+    name: 生成验证报告
+    skill_match: ["generate-report", "report"]
+    error_strategy:
+      max_retries: 1
+      on_failure: skip
+
+edges:
+  - from: define_objective
+    to: identify_params
+  - from: identify_params
+    to: design_doe
+  - from: design_doe
+    to: collect_data
+  - from: collect_data
+    to: analyze_results
+  - from: analyze_results
+    to: generate_report
 ```
-define_objective >> identify_params >> design_doe
-     |                                        |
-     v                                        v
-generate_report << analyze_results << collect_data
 
-Throughout: agent may call query_knowledge_base() at any node
-             to ground its reasoning in domain documents
-```
-
-### State Schema
+### Workflow State Schema
 
 ```python
-class OptimizationState(TypedDict):
+class WorkflowState(TypedDict):
+    workflow_name: str
     messages: list[BaseMessage]          # Agent conversation history
     current_node: str                    # Current graph node
-    node_statuses: dict[str, NodeStatus] # Per-node status
+    completed_nodes: list[str]           # Nodes already executed
+    node_statuses: dict[str, NodeStatus] # pending/running/completed/error/skipped
     node_results: dict[str, Any]         # Per-node output data
     node_durations: dict[str, float]     # Per-node execution time
     errors: list[NodeError]              # Error log
-    kb_context: list[KBDocument]         # Retrieved KB docs (appended across nodes)
+    kb_context: list[KBDocument]         # Retrieved KB docs (append-only across nodes)
 
-    # Domain data (populated incrementally)
+    # Domain data (populated incrementally per workflow)
     optimization_objective: str
     key_parameters: list[Parameter]
     doe_design: DOEDesign
@@ -180,18 +244,22 @@ class OptimizationState(TypedDict):
     report: str
 ```
 
-### Node Error Policy
+### Node Error Policy (per node, from YAML)
 
-| Condition | recoverable | Action |
-|-----------|-------------|--------|
-| User input conflict or insufficient data | true | Agent retries the step up to 3 times |
-| LLM call failure (timeout, API error) | false | Graph terminates, saves checkpoint |
-| Tool execution error (file not found, etc.) | true | Agent retries tool up to 3 times |
-| KB query failure | true | Agent continues without KB results |
-| Graph-level fatal error | false | Graph aborts, error pushed to WS |
+| on_failure | Behavior |
+|------------|----------|
+| terminate | Graph stops, saves checkpoint, user can resume |
+| skip | Graph marks node as skipped, continues to next node |
+| retry | Retries up to max_retries, then falls back to on_failure |
 
-- After max retries on a recoverable error: marked as unrecoverable, graph terminates.
-- From termination state: user can resume from interrupted node or start over.
+Recoverable errors (retry triggers):
+- User input conflict or insufficient data
+- Tool execution error (file not found, etc.)
+- KB query failure
+
+Unrecoverable errors (immediate terminate):
+- LLM call failure (timeout, API error)
+- Graph-level fatal error
 
 ## Skill System
 
@@ -349,9 +417,11 @@ server:
 skills:
   sources:
     - ./skills
-```
 
-Configuration is loaded from `config.yaml` at startup and can be overridden via environment variables. The LLM provider is fully abstracted behind LangChain's `BaseChatModel`, so any model supporting tool calling works.
+workflows:
+  directory: ./workflows
+  default: process-optimization
+```
 
 ## Hot-Plug Mechanism
 
@@ -376,6 +446,7 @@ All events are JSON with a type field:
 | node:progress | S>C | Overall progress update |
 | node:error | S>C | Node error (recoverable flag) |
 | node:retry | S>C | Node retrying (attempt number) |
+| node:skipped | S>C | Node skipped by error strategy |
 | agent:message | S>C | Agent chat message |
 | agent:token | S>C | Streaming token |
 | agent:tool_call | S>C | Tool call initiated |
@@ -394,7 +465,9 @@ All events are JSON with a type field:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | /api/sessions | Create session |
+| GET | /api/workflows | List available workflow definitions |
+| GET | /api/workflows/:name | Get workflow definition detail |
+| POST | /api/sessions | Create session (select workflow) |
 | GET | /api/sessions | List sessions |
 | GET | /api/sessions/:id | Session detail |
 | DELETE | /api/sessions/:id | Delete session |
@@ -429,7 +502,7 @@ After interruption: view saved state, resume from interrupted node, or start ove
 
 | Page | Route | Content |
 |------|-------|---------|
-| Dashboard | / | Active/past sessions, status, duration |
+| Dashboard | / | Available workflows, active/past sessions |
 | WorkflowDetail | /sessions/:id | DAG, node status, chat, terminate, KB search panel |
 | KnowledgeBase | /kb | Document management, upload, search preview |
 | Analysis | /sessions/:id/analysis | Factor rank, Pareto, heatmap, DOE matrix, scatter |
@@ -440,15 +513,16 @@ After interruption: view saved state, resume from interrupted node, or start ove
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Process model | Single process | Simpler deployment |
+| Graph definition | YAML (dynamic) | Adding new workflows requires no code changes |
 | Frontend | React SPA (Vite) | No SEO needed for dashboard |
 | Charts | ECharts | Better complex chart support |
 | WS protocol | JSON Lines | Simple, parseable |
-| Skill-node mapping | Dynamic (not hardcoded) | Adding skills doesn't need graph changes |
+| Skill-node mapping | skill_match keywords in YAML | Agent-driven, flexible per workflow |
 | Termination | InterruptOnConfig | Graceful, state-preserving |
 | KB vector store | Chroma | Local-first, no external infra needed |
 | KB query | Tool-based (agent decides) | Aligns with progressive disclosure pattern |
-| KB retrieval | query tool + KB skill description | Agent actively chooses when and what to search |
 | KB events | kb:query / kb:result in WS | Frontend shows search progress transparently |
 | LLM model | Configurable via config.yaml | Support any tool-calling model provider |
 | kb_context | Append-only across nodes | Frontend groups by node name for display |
-| Error recovery | Max 3 retries per recoverable error | Prevents infinite loops while giving agent a chance |
+| Error recovery | Per-node (configured in YAML) | Different nodes have different error tolerance |
+| Workflow YAML format | Node list + edge list + per-node error strategy | Declarative, deterministic, easy to validate |
