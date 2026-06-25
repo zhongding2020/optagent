@@ -1,0 +1,31 @@
+llm:
+  provider: openai
+  model: gpt-4o
+  api_key_env: OPENAI_API_KEY
+
+embedding:
+  provider: openai
+  model: text-embedding-3-small
+  api_key_env: OPENAI_API_KEY
+
+knowledge_base:
+  chroma_persist_dir: ./data/chroma
+  chunk_size: 1000
+  chunk_overlap: 200
+  default_top_k: 5
+
+server:
+  host: 0.0.0.0
+  port: 8000
+
+persistence:
+  sqlite_path: ./data/sessions.db
+  checkpoint_dir: ./data/checkpoints
+
+skills:
+  sources:
+    - ./skills
+
+workflows:
+  directory: ./workflows
+  default: process-optimization
