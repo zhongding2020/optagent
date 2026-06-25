@@ -1,0 +1,72 @@
+name: process-optimization
+description: 工艺参数优化标准工作流 - 从目标定义到报告生成
+version: "1.0"
+
+nodes:
+  - id: define_objective
+    name: 梳理优化目标
+    skill_match:
+      - define-objective
+      - objective
+    error_strategy:
+      max_retries: 3
+      on_failure: terminate
+
+  - id: identify_params
+    name: 识别关键工艺参数
+    skill_match:
+      - identify-params
+      - parameter
+    error_strategy:
+      max_retries: 3
+      on_failure: terminate
+
+  - id: design_doe
+    name: 试验设计(DOE)
+    skill_match:
+      - design-doe
+      - doe
+      - experiment-design
+    error_strategy:
+      max_retries: 3
+      on_failure: terminate
+
+  - id: collect_data
+    name: 收集试验结果
+    skill_match:
+      - collect-data
+      - experiment
+    error_strategy:
+      max_retries: 2
+      on_failure: skip
+
+  - id: analyze_results
+    name: 数据分析与因子提取
+    skill_match:
+      - analyze-results
+      - analysis
+      - factor
+    error_strategy:
+      max_retries: 2
+      on_failure: terminate
+
+  - id: generate_report
+    name: 生成验证报告
+    skill_match:
+      - generate-report
+      - report
+    error_strategy:
+      max_retries: 1
+      on_failure: skip
+
+edges:
+  - from_node: define_objective
+    to: identify_params
+  - from_node: identify_params
+    to: design_doe
+  - from_node: design_doe
+    to: collect_data
+  - from_node: collect_data
+    to: analyze_results
+  - from_node: analyze_results
+    to: generate_report
