@@ -32,9 +32,9 @@ class SkillRegistry:
         self._skills.clear()
         for src in self._sources:
             self._scan(src)
-        return self.list()
+        return self.get_all()
 
-    def list(self) -> list[SkillMeta]:
+    def get_all(self) -> list[SkillMeta]:
         return list(self._skills.values())
 
     def get(self, name: str) -> Optional[SkillMeta]:

@@ -19,7 +19,7 @@ class RegisterRequest(BaseModel):
 async def list_skills():
     if not _registry:
         return []
-    return [s.model_dump() for s in _registry.list()]
+    return [s.model_dump() for s in _registry.get_all()]
 
 
 @router.post("/register")
