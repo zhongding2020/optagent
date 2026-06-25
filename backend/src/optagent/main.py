@@ -4,7 +4,7 @@ OptAgent - FastAPI application entry point.
 Initializes all subsystems: config, persistence, KB, skills, workflow, agent.
 """
 
-import asyncio
+import asyncio, time
 import json
 import logging
 import re
@@ -22,11 +22,8 @@ from .server.ws import WSConnection
 from .server import routes as R
 from .skills.registry import SkillRegistry
 from .workflow.loader import WorkflowLoader
-from .workflow.builder import WorkflowBuilder
-from .workflow.node_runner import NodeRunner
 from .agent.factory import create_optagent_agent, _resolve_model
 from .agent.tools import init_tools, query_knowledge_base, step_complete
-from .event.transformer import EventTransformer
 from .kb.retriever import KBRetriever
 from .kb.ingestion import KBIngestion
 from .server.routes.kb import track_search as track_kb_search
@@ -48,6 +45,7 @@ ingestion: KBIngestion = None
 
 _active_ws: Dict[str, WSConnection] = {}
 _session_messages: Dict[str, list] = {}
+_workflow_states: Dict[str, dict] = {}
 
 
 async def kb_ws_broadcast(event: Dict[str, Any]):
@@ -138,17 +136,9 @@ async def session_websocket(websocket: WebSocket, session_id: str):
     _active_ws[session_id] = ws
 
     heartbeat_task = asyncio.create_task(ws.heartbeat())
+    wf_state = _get_workflow_state(session_id)
 
     try:
-        meta = session_manager.get_session(session_id)
-        if meta and meta.status in ("interrupted", "completed"):
-            await ws.send({
-                "type": "graph:start",
-                "session_id": session_id,
-                "workflow_name": meta.workflow_name,
-                "status": meta.status,
-            })
-
         while ws.alive:
             msg = await ws.receive()
             if msg is None:
@@ -157,7 +147,7 @@ async def session_websocket(websocket: WebSocket, session_id: str):
             msg_type = msg.get("type")
 
             if msg_type == "user:terminate":
-                session_manager.terminate(session_id)
+                wf_state["cancelled"] = True
                 await ws.send({
                     "type": "graph:interrupted",
                     "session_id": session_id,
@@ -168,70 +158,134 @@ async def session_websocket(websocket: WebSocket, session_id: str):
                 await ws.send({"type": "node:skipped", "node": "user_skipped"})
 
             elif msg_type == "user:message":
-                # Process user message through the agent and stream response
-                await _chat_with_agent(session_id, msg.get("content", ""), ws)
+                content = msg.get("content", "")
+                # Start workflow on first user message
+                if not wf_state.get("started") and not wf_state.get("no_workflow"):
+                    await _start_workflow(session_id, ws, wf_state)
+                # Process message through agent and stream response
+                result = await _chat_with_agent(session_id, content, ws)
+                # If step_complete was called, advance to next workflow node
+                if result.get("step_completed") and not wf_state.get("no_workflow"):
+                    await _advance_workflow(session_id, ws, wf_state, result)
 
             elif msg_type == "user:resume_from":
-                await _run_workflow(session_id, ws)
+                await ws.send({
+                    "type": "graph:error",
+                    "error": "Workflow execution is now integrated into chat flow",
+                })
 
     except WebSocketDisconnect:
         pass
     finally:
         heartbeat_task.cancel()
         _active_ws.pop(session_id, None)
+        _workflow_states.pop(session_id, None, None)
 
 
 async def _run_workflow(session_id: str, ws: WSConnection):
-    """Execute workflow: load YAML, build graph, run nodes via NodeRunner."""
+    """Deprecated: workflow execution is now handled inline in the WebSocket handler."""
+    logger.warning("_run_workflow() is deprecated")
+
+
+def _get_workflow_state(session_id: str) -> dict:
+    """Get or initialize workflow state for a session."""
+    if session_id in _workflow_states:
+        return _workflow_states[session_id]
+
     meta = session_manager.get_session(session_id)
-    if not meta:
-        await ws.send({"type": "graph:error", "error": "Session not found"})
-        return
+    if meta and meta.workflow_name:
+        try:
+            defn = workflow_loader.load(meta.workflow_name)
+            wf_state = {
+                "started": False,
+                "cancelled": False,
+                "current_node_idx": 0,
+                "defn": defn,
+                "node_statuses": {},
+                "node_results": {},
+                "node_durations": {},
+                "completed_nodes": [],
+            }
+            _workflow_states[session_id] = wf_state
+            return wf_state
+        except Exception:
+            logger.exception(f"Failed to load workflow for session {session_id}")
 
-    cancel_event = asyncio.Event()
+    wf_state = {"started": True, "cancelled": False, "no_workflow": True}
+    _workflow_states[session_id] = wf_state
+    return wf_state
 
-    defn = workflow_loader.load(meta.workflow_name)
-    builder = WorkflowBuilder(defn)
 
-    node_runner = NodeRunner(agent, ws.send, cancel_event)
+async def _start_workflow(session_id: str, ws: Any, wf_state: dict):
+    """Send graph:start and first node:enter events."""
+    defn = wf_state["defn"]
+    wf_state["started"] = True
+    wf_state["current_node_idx"] = 0
 
-    async def make_handler(node):
-        async def handler(state):
-            return await node_runner.run(state, node)
-        return handler
-
-    handlers = {}
-    for node in defn.nodes:
-        handlers[node.id] = await make_handler(node)
-
-    graph = builder.build(handlers)
+    # Add workflow step instruction to conversation context
+    if session_id not in _session_messages:
+        _session_messages[session_id] = []
+    _session_messages[session_id].append(HumanMessage(
+        content=f"[工作流] 你正在执行工艺参数优化工作流。当前步骤：{defn.nodes[0].name}（{defn.nodes[0].id}）。"
+                f"请根据专业技能引导用户完成本步骤目标。完成后，使用 step_complete 工具进入下一步。"
+    ))
 
     await ws.send({
         "type": "graph:start",
         "session_id": session_id,
-        "workflow_name": meta.workflow_name,
+        "workflow_name": defn.name,
         "nodes": [n.id for n in defn.nodes],
     })
 
-    try:
-        initial_state = {
-            "workflow_name": meta.workflow_name,
-            "messages": [],
-            "current_node": "",
-            "completed_nodes": [],
-            "node_statuses": {},
-            "node_results": {},
-            "node_durations": {},
-            "errors": [],
-            "kb_context": [],
-        }
-        state = await graph.ainvoke(initial_state)
-        await ws.send({"type": "graph:end", "session_id": session_id})
-    except asyncio.CancelledError:
-        await ws.send({"type": "graph:interrupted", "session_id": session_id})
-    except Exception as e:
-        logger.exception("Workflow execution failed")
-        await ws.send({"type": "graph:error", "error": str(e)})
+    first_node = defn.nodes[0]
+    wf_state["node_statuses"][first_node.id] = "running"
+    await ws.send({
+        "type": "node:enter",
+        "node": first_node.id,
+        "name": first_node.name,
+    })
+
+
+async def _advance_workflow(session_id: str, ws: Any, wf_state: dict, result: dict):
+    """Mark current node complete and enter next node or finish workflow."""
+    defn = wf_state["defn"]
+    current_idx = wf_state["current_node_idx"]
+    current_node = defn.nodes[current_idx]
+
+    wf_state["node_statuses"][current_node.id] = "completed"
+    wf_state["completed_nodes"].append(current_node.id)
+    wf_state["node_results"][current_node.id] = {"summary": result.get("summary", "")}
+
+    await ws.send({
+        "type": "node:exit",
+        "node": current_node.id,
+        "summary": result.get("summary", ""),
+    })
+
+    next_idx = current_idx + 1
+    if next_idx < len(defn.nodes):
+        next_node = defn.nodes[next_idx]
+        wf_state["current_node_idx"] = next_idx
+        wf_state["node_statuses"][next_node.id] = "running"
+        # Add next step instruction
+        _session_messages[session_id].append(HumanMessage(
+            content=f"[工作流] 步骤“{current_node.name}”已完成。现在进入下一步：{next_node.name}（{next_node.id}）。"
+                    f"请根据新步骤的专业技能引导用户完成目标。完成后使用 step_complete 工具。"
+        ))
+        await ws.send({
+            "type": "node:enter",
+            "node": next_node.id,
+            "name": next_node.name,
+        })
+    else:
+        meta = session_manager.get_session(session_id)
+        if meta:
+            meta.status = "completed"
+            store.update(meta)
+        await ws.send({
+            "type": "graph:end",
+            "session_id": session_id,
+        })
 
 
 def _build_skills_system_prompt() -> list[SystemMessage]:
@@ -339,9 +393,14 @@ def _fix_markdown_tables(text: str) -> str:
 
 
 async def _chat_with_agent(session_id: str, user_message: str, ws: Any):
-    """Process a user message through deepagents agent with SkillsMiddleware + KB tools."""
+    """Process a user message through deepagents agent.
+    
+    Returns a dict with workflow signals:
+        step_completed (bool): whether the agent called step_complete
+        summary (str): result summary from step_complete if called
+    """
     if not user_message or agent is None:
-        return
+        return {"step_completed": False, "summary": ""}
 
     # Store user message in conversation history
     if session_id not in _session_messages:
@@ -352,6 +411,8 @@ async def _chat_with_agent(session_id: str, user_message: str, ws: Any):
     await ws.send({"type": "agent:thinking"})
 
     full_content = ""
+    step_completed = False
+    step_summary = ""
     try:
         async for event in agent.astream_events(
             {"messages": _session_messages[session_id]},
@@ -381,6 +442,12 @@ async def _chat_with_agent(session_id: str, user_message: str, ws: Any):
                         "query": input_data.get("query", ""),
                         "top_k": input_data.get("top_k", 5),
                     })
+                elif name == "step_complete":
+                    step_completed = True
+                    step_summary = (
+                        input_data.get("result_summary", "")
+                        if isinstance(input_data, dict) else ""
+                    )
 
             elif event_name == "on_tool_end":
                 output = data.get("output", "")
@@ -405,6 +472,7 @@ async def _chat_with_agent(session_id: str, user_message: str, ws: Any):
     except Exception:
         logger.exception("Agent streaming failed")
         await ws.send({"type": "graph:error", "error": "Agent processing failed"})
+    return {"step_completed": step_completed, "summary": step_summary}
 
 
 async def execute_session(session_id: str):

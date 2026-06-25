@@ -19,16 +19,21 @@ export default function WorkflowDetail() {
   const { events, connected, send, terminate, nextStep } = useWebSocket(id || null)
 
   const nodeStatuses: Record<string, string> = {}
+  const durations: Record<string, number> = {}
   const errors: string[] = []
   let kbQuery: string | null = null
   let kbChunks: { content: string; metadata: Record<string, string> }[] = []
   const chatMessages: { role: string; content: string }[] = []
   let currentToken = ''
   const matchedSkills: string[] = []
+  let workflowComplete = false
 
   events.forEach((e) => {
     if (e.type === 'node:enter') nodeStatuses[e.node] = 'running'
-    else if (e.type === 'node:exit') nodeStatuses[e.node] = 'completed'
+    else if (e.type === 'node:exit') { 
+      nodeStatuses[e.node] = 'completed'
+      if (e.duration_ms) durations[e.node] = e.duration_ms
+    }
     else if (e.type === 'node:error') { nodeStatuses[e.node] = 'error'; errors.push(e.error) }
     else if (e.type === 'node:skipped') nodeStatuses[e.node] = 'skipped'
     else if (e.type === 'node:retry') nodeStatuses[e.node] = 'retrying'
@@ -45,6 +50,7 @@ export default function WorkflowDetail() {
     }
     else if (e.type === 'kb:query') kbQuery = e.query
     else if (e.type === 'kb:result') kbChunks = e.chunks
+    else if (e.type === 'graph:end') workflowComplete = true
   })
   if (currentToken) chatMessages.push({ role: 'assistant', content: currentToken + '...' })
 
@@ -59,6 +65,9 @@ export default function WorkflowDetail() {
           <span className={`text-xs font-medium ${connected ? 'text-success' : 'text-warning'}`}>
             {connected ? 'Connected' : 'Reconnecting...'}
           </span>
+          {workflowComplete && (
+            <span className="text-xs font-medium text-success">Workflow Complete</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <NextStepButton onClick={nextStep} />
@@ -78,7 +87,7 @@ export default function WorkflowDetail() {
         <div className="w-72 border-l border-border bg-bg-primary flex flex-col overflow-y-auto shrink-0">
           <div className="p-4 border-b border-border">
             <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Workflow</h3>
-            <WorkflowGraph nodes={WORKFLOW_NODES} statuses={nodeStatuses} durations={{}} />
+            <WorkflowGraph nodes={WORKFLOW_NODES} statuses={nodeStatuses} durations={durations} />
           </div>
           <div className="p-4 border-b border-border">
             <SkillStatus nodeStatuses={nodeStatuses} matchedSkills={matchedSkills} />

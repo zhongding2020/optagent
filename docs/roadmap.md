@@ -1,6 +1,7 @@
 # OptAgent 功能实现路线图
 
 > 最后更新：2026-06-25 21:30
+> 最后更新：2026-06-25 22:30
 > 用途：追踪设计与实现的差距，持续刷新功能完成状态
 
 ---
@@ -18,6 +19,7 @@
 | # | 功能 | 描述 | 状态 | 文件 |
 |---|------|------|------|------|
 | 1 | LangGraph 执行路径 | 创建 Session 后触发 `_run_workflow()`，走完整 NodeRunner 循环 | [ ] | `main.py`, `session_manager.py` |
+ | 1 | LangGraph 执行路径 | 首条消息触发 `graph:start` + `node:enter`，逐节点推进（step_complete → 下一节点 | [x] | `main.py`, `session_manager.py` |
 | 2 | 正确使用 deepagents | `agent.astream_events()` + `create_deep_agent(tools=...)`，激活 SkillsMiddleware | [x] | `main.py`, `agent/factory.py` |
 | 3 | 事件流接入 | 使用 `agent.astream_events()` 替代手动事件构建 | [x] | `main.py` |
 | 4 | KB Tool 绑定 | `query_knowledge_base` 和 `step_complete` 传入 `create_deep_agent()` | [x] | `main.py`, `agent/tools.py` |
@@ -116,20 +118,26 @@
 
 ### 当前
 ```
-用户发消息 → _chat_with_agent()
-  ├─ 手动技能注入（system prompt）
-  ├─ 手动 KB 搜索
-  └─ chat_model.stream()   ← 裸调 LLM
+用户发消息 → WebSocket handler
+  ├─ 首次消息 → _start_workflow()
+  │  ├─ graph:start → 前端 WorkflowGraph
+  │  └─ node:enter（define_objective）
+  ├─ _chat_with_agent()
+  │  ├─ agent.astream_events() ← deepagents + SkillsMiddleware
+  │  ├─ 渐进式技能加载 on_tool_call
+  │  └─ 检测 step_complete → _advance_workflow()
+  │     ├─ node:exit（当前节点）
+  │     └─ node:enter（下一节点）/ graph:end（完成）
+  └─ 前端展示 chat 消息 + 工作流状态
 ```
 
 ### 目标
 ```
-用户发消息 → _run_workflow() → NodeRunner.run()
-  ├─ agent.ainvoke()        ← deepagents + SkillsMiddleware
-  │  ├─ 渐进式技能加载
-  │  └─ tool calling (query_kb, step_complete)
-  └─ EventTransformer → WS 事件
-     └─ LangGraph Checkpoint
+用户发消息 → WebSocket handler
+  ├─ 工作流状态管理（_workflow_states）
+  ├─ _chat_with_agent() + step_complete 检测
+  ├─ _advance_workflow() 推进节点
+  └─ 渐进式技能加载 + KB tool calling
 ```
 
 ---
