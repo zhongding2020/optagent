@@ -1,10 +1,15 @@
 __pycache__/
+**/__pycache__/
 *.pyc
+**/*.pyc
 *.pyo
+**/*.pyo
 .env
 .git
 .gitignore
 *.egg-info/
+**/*.egg-info/
+.venv/
+**/.venv/
 data/
 tests/
-.venv/
