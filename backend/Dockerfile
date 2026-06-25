@@ -15,15 +15,11 @@ RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.li
 
 WORKDIR /app/backend
 
-# Install Python dependencies
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
+# Copy everything (pyproject.toml + src + config + workflows + skills)
+COPY . .
 
-# Copy source code and configuration
-COPY src/ src/
-COPY config.yaml .
-COPY workflows/ workflows/
-COPY skills/ skills/
+# Install the package and all dependencies
+RUN pip install --no-cache-dir -e .
 
 RUN mkdir -p data/chroma data/checkpoints
 
