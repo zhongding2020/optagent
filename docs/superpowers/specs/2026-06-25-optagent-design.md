@@ -34,7 +34,7 @@ OptAgent is a framework that combines AI agent capabilities with structured proc
 | Agent Runtime  |  | Knowledge Base |
 | deepagents +   |  |                |
 | LangGraph      |  | Vector Store   |
-| SkillsMiddleware|  | (Chroma/Qdrant)|
+| SkillsMiddleware|  | (Chroma)       |
 | + KB Tool      |  | + Files (PDF/  |
 |                |  |   Markdown)    |
 +----------------+  +----------------+
@@ -47,13 +47,16 @@ OptAgent is a framework that combines AI agent capabilities with structured proc
 | Agent Runtime | deepagents (Python) | LangGraph-based, built-in SkillsMiddleware |
 | Graph | @langchain/langgraph (Python) | Stateful DAG, streaming, checkpointing |
 | API Server | FastAPI | Native WebSocket, async, Python |
-| KB Vector Store | Chroma (embeddings via OpenAI/text-embedding-3-small) | Lightweight, local-first, easy setup |
-| KB Document Loader | LangChain document loaders | PDF, Markdown, Confluence, SharePoint |
+| KB Vector Store | Chroma | Lightweight, local-first, no external infra |
+| KB Document Loader (v1) | LangChain loaders for local PDF + Markdown | Simple setup, no auth required |
+| KB Document Loader (future) | Confluence, SharePoint, etc. | Requires OAuth, post-v1 |
+| LLM | Configurable (OpenAI, Anthropic, Ollama, etc.) | deepagents supports any tool-calling model |
+| Embedding | Configurable via LangChain embeddings API | Coupled to vector store choice |
 | Frontend | React + Vite (SPA) | Fast dev, rich chart ecosystem |
 | Real-time | WebSocket (JSON Lines) | Bidirectional, terminate support |
 | Charts | ECharts | Heatmaps, Pareto, scatter for DOE |
 | Skills Format | Markdown + YAML frontmatter | deepagents native, hot-pluggable |
-| KB Ingestion Pipeline | Python script + cron / webhook | Re-index on document update |
+| KB Ingestion | Python script + cron / webhook | Re-index on document update |
 
 ## Project Structure
 
@@ -62,6 +65,7 @@ optagent/
 +-- backend/
 |   +-- src/optagent/
 |   |   +-- main.py                     # FastAPI entry
+|   |   +-- config.py                   # Configuration (model, kb paths, etc.)
 |   |   +-- agent/
 |   |   |   +-- factory.py              # create_agent() wrapper
 |   |   |   +-- tools.py                # Tool definitions (incl. kb_query)
@@ -70,7 +74,7 @@ optagent/
 |   |   |   +-- types.py                # SkillMetadata types
 |   |   +-- graph/
 |   |   |   +-- builder.py              # StateGraph builder
-|   |   |   +-- nodes.py                # Node definitions
+|   |   |   +-- nodes.py                # Node definitions + error handling
 |   |   +-- server/
 |   |   |   +-- routes/
 |   |   |   |   +-- sessions.py
@@ -98,6 +102,7 @@ optagent/
 |   +-- kb_docs/                        # Example KB documents
 |   |   +-- doe-handbook/
 |   |   +-- process-specs/
+|   +-- config.yaml                     # Application configuration
 |   +-- tests/
 |   +-- pyproject.toml
 |
@@ -109,6 +114,7 @@ optagent/
 |   |   |   +-- WorkflowDetail.tsx
 |   |   |   +-- Analysis.tsx
 |   |   |   +-- Chat.tsx
+|   |   |   +-- KnowledgeBase.tsx       # KB document management page
 |   |   +-- components/
 |   |   |   +-- charts/
 |   |   |   |   +-- FactorRankBar.tsx
@@ -120,8 +126,8 @@ optagent/
 |   |   |   +-- SkillStatus.tsx
 |   |   |   +-- AgentChat.tsx
 |   |   |   +-- TerminateButton.tsx
-|   |   |   +-- KbSearchResult.tsx       # KB 搜索结果展示
-|   |   |   +-- KbDocumentList.tsx       # KB 文档管理面板
+|   |   |   +-- KbSearchResult.tsx
+|   |   |   +-- KbDocumentList.tsx
 |   |   +-- hooks/
 |   |   |   +-- useWebSocket.ts
 |   |   |   +-- useApi.ts
@@ -163,7 +169,7 @@ class OptimizationState(TypedDict):
     node_results: dict[str, Any]         # Per-node output data
     node_durations: dict[str, float]     # Per-node execution time
     errors: list[NodeError]              # Error log
-    kb_context: list[KBDocument]         # Retrieved KB documents (cross-node)
+    kb_context: list[KBDocument]         # Retrieved KB docs (appended across nodes)
 
     # Domain data (populated incrementally)
     optimization_objective: str
@@ -173,6 +179,19 @@ class OptimizationState(TypedDict):
     analysis: AnalysisResult
     report: str
 ```
+
+### Node Error Policy
+
+| Condition | recoverable | Action |
+|-----------|-------------|--------|
+| User input conflict or insufficient data | true | Agent retries the step up to 3 times |
+| LLM call failure (timeout, API error) | false | Graph terminates, saves checkpoint |
+| Tool execution error (file not found, etc.) | true | Agent retries tool up to 3 times |
+| KB query failure | true | Agent continues without KB results |
+| Graph-level fatal error | false | Graph aborts, error pushed to WS |
+
+- After max retries on a recoverable error: marked as unrecoverable, graph terminates.
+- From termination state: user can resume from interrupted node or start over.
 
 ## Skill System
 
@@ -192,11 +211,11 @@ Skills follow the deepagents / Anthropic Agent Skills specification:
 |                                                    |
 |  Ingestion Pipeline:                              |
 |    PDF/Markdown -> LangChain Loader -> Splitter   |
-|      -> Embedding (OpenAI) -> Vector Store         |
+|      -> Embedding (configurable) -> Chroma         |
 |                                                    |
 |  Retrieval Pipeline:                               |
 |    query_knowledge_base(query, top_k=5)            |
-|      -> Vector Store -> Rank -> Return chunks      |
+|      -> Chroma -> Rerank -> Return chunks          |
 |                                                    |
 |  Tool Layer:                                       |
 |    query_knowledge_base registered as deepagents   |
@@ -224,7 +243,7 @@ def query_knowledge_base(
         top_k: Number of documents to return (default: 5)
         filter: Optional metadata filter (e.g. {"source": "doe-handbook"})
     """
-    ...
+    return retriever.search(query=query, top_k=top_k, filter=filter)
 ```
 
 ### KB Skill (knowledge-retrieval/SKILL.md)
@@ -303,6 +322,37 @@ Agent 整合KB信息 + 用户输入 -> 输出结构化目标
 | Re-index | POST /api/kb/reindex | Full re-index of all sources |
 | Search | GET /api/kb/search?q=... | Manual search for testing |
 
+## Configuration
+
+```yaml
+# config.yaml
+llm:
+  provider: openai           # openai | anthropic | ollama | ...
+  model: gpt-4o              # model name for the chosen provider
+  api_key_env: OPENAI_API_KEY
+
+embedding:
+  provider: openai           # shared with llm provider or independent
+  model: text-embedding-3-small
+  api_key_env: OPENAI_API_KEY
+
+knowledge_base:
+  chroma_persist_dir: ./data/chroma
+  chunk_size: 1000
+  chunk_overlap: 200
+  default_top_k: 5
+
+server:
+  host: 0.0.0.0
+  port: 8000
+
+skills:
+  sources:
+    - ./skills
+```
+
+Configuration is loaded from `config.yaml` at startup and can be overridden via environment variables. The LLM provider is fully abstracted behind LangChain's `BaseChatModel`, so any model supporting tool calling works.
+
 ## Hot-Plug Mechanism
 
 SkillRegistry wraps deepagents' SkillsMiddleware sources:
@@ -324,7 +374,8 @@ All events are JSON with a type field:
 | node:enter | S>C | Node started |
 | node:exit | S>C | Node completed, duration and result |
 | node:progress | S>C | Overall progress update |
-| node:error | S>C | Recoverable node error |
+| node:error | S>C | Node error (recoverable flag) |
+| node:retry | S>C | Node retrying (attempt number) |
 | agent:message | S>C | Agent chat message |
 | agent:token | S>C | Streaming token |
 | agent:tool_call | S>C | Tool call initiated |
@@ -398,3 +449,6 @@ After interruption: view saved state, resume from interrupted node, or start ove
 | KB query | Tool-based (agent decides) | Aligns with progressive disclosure pattern |
 | KB retrieval | query tool + KB skill description | Agent actively chooses when and what to search |
 | KB events | kb:query / kb:result in WS | Frontend shows search progress transparently |
+| LLM model | Configurable via config.yaml | Support any tool-calling model provider |
+| kb_context | Append-only across nodes | Frontend groups by node name for display |
+| Error recovery | Max 3 retries per recoverable error | Prevents infinite loops while giving agent a chance |
