@@ -16,7 +16,7 @@
      try {
        const result: any = await api.uploadKbDocument(file)
        const poll = setInterval(async () => {
-         const job = await fetch(`http://localhost:8000/api/kb/jobs/${result.job_id}`).then(r => r.json())
+         const job = await fetch(`http://localhost:8020/api/kb/jobs/${result.job_id}`).then(r => r.json())
          if (job.phase === 'done' || job.phase === 'error') {
            clearInterval(poll); setUploading(false); setProgress(null); loadDocs()
          } else {

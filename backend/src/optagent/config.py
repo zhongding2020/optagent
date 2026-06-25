@@ -26,7 +26,7 @@ class KBConfig(BaseModel):
 
 class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 8020
 
 
 class PersistenceConfig(BaseModel):

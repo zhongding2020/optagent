@@ -25,6 +25,6 @@ COPY skills/ skills/
 # Create persistent data directories
 RUN mkdir -p data/chroma data/checkpoints
 
-EXPOSE 8000
+EXPOSE 8020
 
-CMD ["uvicorn", "optagent.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "optagent.main:app", "--host", "0.0.0.0", "--port", "8020"]

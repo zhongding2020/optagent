@@ -8,7 +8,7 @@ export function useWebSocket(sessionId: string | null) {
 
   const connect = useCallback(() => {
     if (!sessionId) return
-    const ws = new WebSocket(`ws://localhost:8000/ws/sessions/${sessionId}`)
+    const ws = new WebSocket(`ws://localhost:8020/ws/sessions/${sessionId}`)
     wsRef.current = ws
 
     ws.onopen = () => setConnected(true)

@@ -241,7 +241,7 @@ knowledge_base:
 
 server:
   host: 0.0.0.0
-  port: 8000
+  port: 8020
 
 persistence:
   sqlite_path: ./data/sessions.db
@@ -1891,9 +1891,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8000',
+      '/api': 'http://localhost:8020',
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'ws://localhost:8020',
         ws: true,
       },
     },
@@ -1979,7 +1979,7 @@ export function useWebSocket(sessionId: string | null) {
 
   const connect = useCallback(() => {
     if (!sessionId) return
-    const ws = new WebSocket(`ws://localhost:8000/ws/sessions/${sessionId}`)
+    const ws = new WebSocket(`ws://localhost:8020/ws/sessions/${sessionId}`)
     wsRef.current = ws
 
     ws.onopen = () => setConnected(true)
@@ -2019,7 +2019,7 @@ export function useWebSocket(sessionId: string | null) {
 - [ ] **Create useApi.ts**
 
 ```ts
-const BASE = 'http://localhost:8000/api'
+const BASE = 'http://localhost:8020/api'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -2840,7 +2840,7 @@ export default function KnowledgeBase() {
       const result = await api.uploadKbDocument(file) as any
       // Poll job status
       const poll = setInterval(async () => {
-        const job = await fetch(`http://localhost:8000/api/kb/jobs/${result.job_id}`).then(r => r.json())
+        const job = await fetch(`http://localhost:8020/api/kb/jobs/${result.job_id}`).then(r => r.json())
         if (job.phase === 'done' || job.phase === 'error') {
           clearInterval(poll)
           setUploading(false)
@@ -2892,7 +2892,7 @@ export default function KnowledgeBase() {
 
 // placeholder delete function
 async function deleteKbDocument(id: string) {
-  await fetch(`http://localhost:8000/api/kb/documents/${id}`, { method: 'DELETE' })
+  await fetch(`http://localhost:8020/api/kb/documents/${id}`, { method: 'DELETE' })
 }
 
 // Add missing api method

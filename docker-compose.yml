@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: optagent
     ports:
-      - "8000:8000"
+      - "8020:8020"
     volumes:
       # Persist SQLite, Chroma, and LangGraph checkpoints
       - optagent-data:/app/backend/data
