@@ -52,8 +52,8 @@ async def kb_ws_broadcast(event: Dict[str, Any]):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global config, store, session_manager, skill_registry
-    global workflow_loader, agent, retriever, ingestion
+    global config, store, session_manager, skill_registry, chat_model
+    global workflow_loader, agent, retriever, ingestion, chat_model
 
     config = AppConfig.load()
 
