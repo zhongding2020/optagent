@@ -229,7 +229,7 @@ async def _run_workflow(session_id: str, ws: WSConnection):
 
 
 @app.post("/api/sessions/{session_id}/execute")
-async def _chat_with_agent(session_id: str, user_message: str, ws: WSConnection):
+async def _chat_with_agent(session_id: str, user_message: str, ws: Any):
     """Process a user message through the LLM and stream the response."""
     if not user_message or chat_model is None:
         return
