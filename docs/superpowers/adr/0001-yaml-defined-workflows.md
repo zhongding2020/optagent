@@ -34,3 +34,10 @@ Each node in the generated graph delegates to a deepagents agent, which uses Ski
 - Python code approach was simpler but killed extensibility
 - Full DSL with custom node types was overkill for v1
 - YAML strikes a balance: declarative, easy to validate with Pydantic, easy to extend later
+
+## Amended: Node execution model
+
+2026-06-25: Selected "residence loop" pattern for node execution (ADR 0002).
+Each node enters a streaming conversation loop with the user until the step goal
+is reached, then exits. Checkpoint happens only at node boundaries.
+See ADR 0002 for full rationale.
