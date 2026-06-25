@@ -12,7 +12,7 @@
      grid: { bottom: 50, left: 60 },
      tooltip: { trigger: 'item', formatter: (p: any) => `Temp: ${p.data[0]}°C<br/>Yield: ${p.data[1]}%` },
    }
-   return <div style={{ padding: 16, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff' }}>
+   return <div className="p-4 rounded-xl border border-border bg-bg-primary">
      <ReactECharts option={option} style={{ height: 280 }} />
    </div>
  }

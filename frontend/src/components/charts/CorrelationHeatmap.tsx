@@ -14,7 +14,7 @@
      series: [{ type: 'heatmap', data, label: { show: true, formatter: (p: any) => p.data[2].toFixed(1) } }],
      grid: { top: 60 },
    }
-   return <div style={{ padding: 16, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff' }}>
+   return <div className="p-4 rounded-xl border border-border bg-bg-primary">
      <ReactECharts option={option} style={{ height: 320 }} />
    </div>
  }
