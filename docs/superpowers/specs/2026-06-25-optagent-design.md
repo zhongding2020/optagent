@@ -22,28 +22,30 @@ OptAgent is a framework that combines AI agent capabilities with structured proc
 |  Web UI (React SPA)                        |
 |  Dashboard / WorkflowDetail / Analysis     |
 +---------------------------+----------------+
-                            | WebSocket + REST
+                            | WS + REST
 +---------------------------v----------------+
 |  FastAPI Server                             |
 |  Routes: sessions, workflows, skills, kb   |
-|  WebSocket: event encoding + push          |
-|  SessionManager: tasks + cancel tokens     |
+|  WebSocket (1 per session page)            |
+|  EventTransformer (LG events -> WS events) |
+|  Session: asyncio task + cancel tokens     |
 +-------+-------------------+----------------+
         |                   |
 +-------v--------+  +-------v--------+
 | Agent Runtime  |  | Knowledge Base |
-| deepagents +   |  |                |
-| LangGraph      |  | Chroma         |
-| SkillsMiddleware|  | + PDF/Markdown |
-| + KB Tool      |  |                |
-|                |  |                |
+| deepagents +   |  | Chroma         |
+| LangGraph      |  | PDF/Markdown   |
+| SkillsMiddleware|  | Async upload   |
+| + KB Tool      |  | progress via WS|
+| + step_complete|  |                |
 +-------+--------+  +----------------+
         |
 +-------v--------+
-| Workflow       |
-| Builder        |
-| YAML -> Graph  |
-| (动态生成)      |
+| Persistence    |
+| SQLite         |
+| (metadata)     |
+| + LangGraph    |
+|   checkpoint   |
 +----------------+
 ```
 
@@ -64,7 +66,8 @@ OptAgent is a framework that combines AI agent capabilities with structured proc
 | Charts | ECharts | Heatmaps, Pareto, scatter for DOE |
 | Skills Format | Markdown + YAML frontmatter | deepagents native, hot-pluggable |
 | Workflow Definition | YAML | Declarative, no code changes needed for new workflows |
-| KB Ingestion | Python script + cron / webhook | Re-index on document update |
+| Session Persistence | SQLite + LangGraph checkpoint | Lightweight, no external service needed |
+| KB Ingestion | Background asyncio task + WS progress | Non-blocking, real-time feedback |
 
 ## Project Structure
 
@@ -73,37 +76,43 @@ optagent/
 +-- backend/
 |   +-- src/optagent/
 |   |   +-- main.py                     # FastAPI entry
-|   |   +-- config.py                   # Configuration (model, kb paths, etc.)
+|   |   +-- config.py                   # Configuration loader
 |   |   +-- agent/
 |   |   |   +-- factory.py              # create_agent() wrapper
-|   |   |   +-- tools.py                # Tool definitions (incl. kb_query)
+|   |   |   +-- tools.py                # Tool defs (kb_query, step_complete)
+|   |   +-- event/
+|   |   |   +-- transformer.py          # EventTransformer (LG -> WS)
+|   |   |   +-- types.py                # WS event type definitions
 |   |   +-- skills/
 |   |   |   +-- registry.py             # SkillRegistry - hot-plug
-|   |   |   +-- types.py                # SkillMetadata types
+|   |   |   +-- types.py
 |   |   +-- workflow/
-|   |   |   +-- builder.py              # WorkflowBuilder - YAML -> StateGraph
-|   |   |   +-- loader.py               # Workflow YAML loader + validation
-|   |   |   +-- types.py                # WorkflowDefinition type
+|   |   |   +-- builder.py              # WorkflowBuilder (YAML -> StateGraph)
+|   |   |   +-- loader.py               # YAML validation + loading
+|   |   |   +-- types.py                # WorkflowDefinition types
+|   |   |   +-- node_runner.py          # Residence loop implementation
 |   |   +-- server/
 |   |   |   +-- routes/
 |   |   |   |   +-- sessions.py
-|   |   |   |   +-- workflows.py        # /api/workflows - list/run
+|   |   |   |   +-- workflows.py
 |   |   |   |   +-- skills.py
 |   |   |   |   +-- data.py
 |   |   |   |   +-- kb.py
-|   |   |   +-- ws.py                   # WebSocket manager
-|   |   |   +-- session_manager.py      # Session lifecycle
+|   |   |   +-- ws.py                   # WS connection manager
+|   |   |   +-- session_manager.py      # asyncio task lifecycle
 |   |   +-- models/
-|   |   |   +-- session.py              # Pydantic models
+|   |   |   +-- session.py
 |   |   +-- backends/
 |   |   |   +-- filesystem.py
-|   |   |   +-- knowledge_base.py       # KB abstraction + vector store
+|   |   |   +-- knowledge_base.py
 |   |   +-- kb/
-|   |       +-- ingestion.py            # Document ingestion pipeline
-|   |       +-- retriever.py            # Query + rerank logic
-|   +-- workflows/                      # Workflow YAML definitions
-|   |   +-- process-optimization.yaml   # 工艺参数优化工作流
-|   +-- skills/                         # Example skills
+|   |   |   +-- ingestion.py
+|   |   |   +-- retriever.py
+|   |   +-- persistence/
+|   |       +-- store.py                # SQLite session CRUD
+|   +-- workflows/
+|   |   +-- process-optimization.yaml
+|   +-- skills/
 |   |   +-- define-objective/SKILL.md
 |   |   +-- identify-params/SKILL.md
 |   |   +-- design-doe/SKILL.md
@@ -112,9 +121,11 @@ optagent/
 |   |   +-- generate-report/SKILL.md
 |   |   +-- knowledge-retrieval/SKILL.md
 |   +-- kb_docs/
-|   |   +-- doe-handbook/
-|   |   +-- process-specs/
-|   +-- config.yaml                     # Application configuration
+|   +-- data/
+|   |   +-- sessions.db                 # SQLite (created at runtime)
+|   |   +-- chroma/                     # Chroma persistence dir
+|   |   +-- checkpoints/                # LangGraph checkpoint dir
+|   +-- config.yaml
 |   +-- tests/
 |   +-- pyproject.toml
 |
@@ -138,8 +149,10 @@ optagent/
 |   |   |   +-- SkillStatus.tsx
 |   |   |   +-- AgentChat.tsx
 |   |   |   +-- TerminateButton.tsx
+|   |   |   +-- NextStepButton.tsx
 |   |   |   +-- KbSearchResult.tsx
 |   |   |   +-- KbDocumentList.tsx
+|   |   |   +-- KbUploadProgress.tsx
 |   |   +-- hooks/
 |   |   |   +-- useWebSocket.ts
 |   |   |   +-- useApi.ts
@@ -148,19 +161,21 @@ optagent/
 |   +-- package.json
 |   +-- vite.config.ts
 |
++-- CONTEXT.md
 +-- README.md
 ```
 
 ## Workflow System
 
-### Design Decision
+### Design Decision (ADR 0001)
 
-Graphs are not hardcoded. Each workflow is defined as a YAML file. WorkflowBuilder reads the YAML and dynamically generates a LangGraph StateGraph at load time. This makes the framework truly extensible — adding a new workflow type does not require Python code changes.
+Graphs are not hardcoded. Each workflow is defined as a YAML file. WorkflowBuilder
+reads the YAML and dynamically generates a LangGraph StateGraph at load time.
+Adding a new workflow type requires zero Python code changes.
 
 ### Workflow YAML Format
 
 ```yaml
-# workflows/process-optimization.yaml
 name: process-optimization
 description: 工艺参数优化标准工作流
 version: 1.0
@@ -192,7 +207,7 @@ nodes:
     skill_match: ["collect-data", "experiment"]
     error_strategy:
       max_retries: 2
-      on_failure: skip           # 用户可以手动补充数据后resume
+      on_failure: skip
 
   - id: analyze_results
     name: 数据分析与因子提取
@@ -225,41 +240,92 @@ edges:
 
 ```python
 class WorkflowState(TypedDict):
+    """Generic workflow state. All domain data lives in node_results."""
     workflow_name: str
-    messages: list[BaseMessage]          # Agent conversation history
-    current_node: str                    # Current graph node
-    completed_nodes: list[str]           # Nodes already executed
-    node_statuses: dict[str, NodeStatus] # pending/running/completed/error/skipped
-    node_results: dict[str, Any]         # Per-node output data
-    node_durations: dict[str, float]     # Per-node execution time
-    errors: list[NodeError]              # Error log
-    kb_context: list[KBDocument]         # Retrieved KB docs (append-only across nodes)
-
-    # Domain data (populated incrementally per workflow)
-    optimization_objective: str
-    key_parameters: list[Parameter]
-    doe_design: DOEDesign
-    experiment_results: list[ExperimentResult]
-    analysis: AnalysisResult
-    report: str
+    messages: list[BaseMessage]
+    current_node: str
+    completed_nodes: list[str]
+    node_statuses: dict[str, NodeStatus]
+    node_results: dict[str, Any]          # Domain data per node (generic)
+    node_durations: dict[str, float]
+    errors: list[NodeError]
+    kb_context: list[KBDocument]          # Append-only, groups by node
 ```
 
-### Node Error Policy (per node, from YAML)
+Domain data is stored per node in `node_results[node_id]`:
+- `node_results["define_objective"]["objective"]` - optimization objective
+- `node_results["identify_params"]["parameters"]` - key parameters list
+- `node_results["design_doe"]["design"]` - DOE design matrix
+- etc.
 
-| on_failure | Behavior |
-|------------|----------|
-| terminate | Graph stops, saves checkpoint, user can resume |
-| skip | Graph marks node as skipped, continues to next node |
-| retry | Retries up to max_retries, then falls back to on_failure |
+This keeps the state schema workflow-agnostic. Different workflow types store
+different fields without changing Python code.
 
-Recoverable errors (retry triggers):
-- User input conflict or insufficient data
-- Tool execution error (file not found, etc.)
-- KB query failure
+### Node Execution: Residence Loop (ADR 0002)
 
-Unrecoverable errors (immediate terminate):
-- LLM call failure (timeout, API error)
-- Graph-level fatal error
+Each node uses the residence loop pattern:
+
+```python
+class NodeRunner:
+    def __init__(self, agent, ws, event_transformer):
+        self.agent = agent
+        self.ws = ws
+        self.transformer = event_transformer
+
+    async def run(self, state: WorkflowState, node_def: NodeDef) -> WorkflowState:
+        while not self._goal_reached(state, node_def.id):
+            # 1. Call agent with current messages
+            result = await self.agent.ainvoke({"messages": state["messages"]})
+            state["messages"] = result["messages"]
+
+            # 2. Check for step_complete tool call
+            if self._has_step_complete(state):
+                state["node_results"][node_def.id] = self._extract_summary(state)
+                break
+
+            # 3. Check for user interruption
+            user_msg = await self.ws.wait_for_message()
+            if user_msg["type"] == "user:terminate":
+                return self._interrupted_state(state)
+            state["messages"].append(HumanMessage(user_msg["content"]))
+
+        state["node_statuses"][node_def.id] = "completed"
+        return state
+```
+
+Key properties:
+- Single shared agent instance per session
+- Checkpoint at node boundaries only (not per turn)
+- step_complete tool signals goal reached
+- User can also click "下一步" button on frontend as manual signal
+- User interruption saves partial checkpoint
+
+## EventTransformer
+
+Converts LangGraph `astream_events` events into optagent WS events:
+
+```python
+class EventTransformer:
+    async def transform(self, event_stream):
+        async for event in event_stream:
+            match event["event"]:
+                case "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+                    yield {"type": "agent:token", "content": chunk.content}
+                case "on_chat_model_start":
+                    yield {"type": "agent:thinking"}
+                case "on_tool_start":
+                    tool = event["name"]
+                    yield {"type": "agent:tool_call",
+                           "tool": tool, "args": event["data"].get("input")}
+                case "on_chain_start" if event["name"] == "SkillsMiddleware":
+                    yield {"type": "skill:matched",
+                           "skill": event["data"].get("skill_name")}
+                case "on_tool_end":
+                    pass
+```
+
+Cleanly separates LangGraph details from the WS protocol. Independently testable.
 
 ## Skill System
 
@@ -274,153 +340,43 @@ Skills follow the deepagents / Anthropic Agent Skills specification:
 ### Architecture
 
 ```
-+--------------------------------------------------+
-|  Knowledge Base                                   |
-|                                                    |
-|  Ingestion Pipeline:                              |
-|    PDF/Markdown -> LangChain Loader -> Splitter   |
-|      -> Embedding (configurable) -> Chroma         |
-|                                                    |
-|  Retrieval Pipeline:                               |
-|    query_knowledge_base(query, top_k=5)            |
-|      -> Chroma -> Rerank -> Return chunks          |
-|                                                    |
-|  Tool Layer:                                       |
-|    query_knowledge_base registered as deepagents   |
-|    tool, agent calls it just like read_file        |
-+--------------------------------------------------+
+KB Ingestion: PDF/Markdown -> LangChain Loader -> Splitter
+               -> Embedding -> Chroma
+               (async background task, progress via WS)
+
+KB Retrieval: query_knowledge_base(query, top_k=5, filter)
+               -> Chroma -> Return chunks via WS event
+
+Tool: registered as deepagents tool alongside step_complete
 ```
 
-### KB Tool
-
-```python
-@tool
-def query_knowledge_base(
-    query: str,
-    top_k: int = 5,
-    filter: dict | None = None
-) -> list[Document]:
-    """Search the knowledge base for documents related to the query.
-
-    Use this when you need domain-specific knowledge about process
-    optimization, DOE methods, material specifications, or best practices
-    that may not be covered by general knowledge.
-
-    Args:
-        query: The search query, be specific about what you need
-        top_k: Number of documents to return (default: 5)
-        filter: Optional metadata filter (e.g. {"source": "doe-handbook"})
-    """
-    return retriever.search(query=query, top_k=top_k, filter=filter)
-```
-
-### KB Skill (knowledge-retrieval/SKILL.md)
+### KB Upload Flow
 
 ```
----
-name: knowledge-retrieval
-description: 当你需要查找工艺规范、DOE方法、材料参数或历史案例时，主动查询知识库
----
-
-# Knowledge Retrieval Skill
-
-## When to Use
-
-- 用户提及的材料/工艺参数需要查标准
-- 用户想参考历史案例或已有DOE设计
-- 你需要验证某个参数的合理取值范围
-- 用户询问最佳实践或行业标准
-
-## Progressive Search Strategy
-
-1. 初始查询（宽泛）: 先用关键词做宽泛搜索，了解KB中有什么
-2. 针对性查询（精确）: 基于用户的后续输入缩小范围
-3. 深入查询（引用）: 需要引用具体数据或公式时精准定位
-
-## Examples
-
-用户: "我要优化焊接工艺"
-  -> query("焊接工艺参数优化 DOE 方法")
-  -> 返回: DOE手册章节、历史焊接DOE案例
-
-用户: "温度范围是150-200°C"
-  -> query("焊接温度 150-200°C 推荐参数 材料")
-  -> 返回: 材料焊接温度规范表、历史参数记录
-
-## 禁止
-
-- 不要在没有用户上下文的情况下盲目查询KB
-- 不要把KB结果当作唯一真理，需要结合用户的实际场景
+User uploads PDF via frontend
+  -> POST /api/kb/upload -> returns {"job_id": "xxx"}
+  -> Background task runs ingestion pipeline:
+     WS: {"type": "kb:index_progress", "job_id": "xxx", "phase": "loading",    "progress": 0.2}
+     WS: {"type": "kb:index_progress", "job_id": "xxx", "phase": "splitting",  "progress": 0.5}
+     WS: {"type": "kb:index_progress", "job_id": "xxx", "phase": "embedding",  "progress": 0.8}
+     WS: {"type": "kb:index_progress", "job_id": "xxx", "phase": "done",       "progress": 1.0, "documents": 3}
 ```
 
-### KB Query Event Flow (Progressive)
+### KB Events (pushed alongside agent:token, unordered between panels)
 
 ```
-User: "我要优化焊接工艺良率"
-                |
-                v
-Agent (in define_objective node) reads SKILL.md
-                |
-                v
-query_knowledge_base("焊接工艺参数优化 DOE 方法 top_k=5")
-                |
-WS: { type: "kb:query",      query: "...", top_k: 5 }
-WS: { type: "kb:result",     query: "...", chunks: [{title, snippet, source}], total: 5 }
-                |
-Agent 消化KB结果后，向用户提问
-                |
-User: "温度是150-200°C，压力3-5bar"
-                |
-                v
-query_knowledge_base("焊接温度压力 150-200C 3-5bar 田口方法")
-                |
-WS: { type: "kb:query",      query: "..." }
-WS: { type: "kb:result",     query: "...", chunks: [...] }
-                |
-Agent 整合KB信息 + 用户输入 -> 输出结构化目标
-```
+agent 推理:
+  -> WS: agent:thinking
+  -> WS: agent:token "让我查一下知识库"
+  -> agent calls query_knowledge_base(...)
+     -> WS: kb:query {query: "...", top_k: 5}
+     -> WS: kb:result {chunks: [...]} (数百毫秒后)
+  -> WS: agent:token "根据知识库..."
+  -> WS: agent:token "中关于焊接工艺..."
 
-### KB Document Management
-
-| Action | REST API | Description |
-|--------|----------|-------------|
-| List index | GET /api/kb/documents | List all indexed documents |
-| Upload | POST /api/kb/upload | Upload PDF/Markdown for indexing |
-| Delete | DELETE /api/kb/documents/:id | Remove document from index |
-| Re-index | POST /api/kb/reindex | Full re-index of all sources |
-| Search | GET /api/kb/search?q=... | Manual search for testing |
-
-## Configuration
-
-```yaml
-# config.yaml
-llm:
-  provider: openai           # openai | anthropic | ollama | ...
-  model: gpt-4o              # model name for the chosen provider
-  api_key_env: OPENAI_API_KEY
-
-embedding:
-  provider: openai           # shared with llm provider or independent
-  model: text-embedding-3-small
-  api_key_env: OPENAI_API_KEY
-
-knowledge_base:
-  chroma_persist_dir: ./data/chroma
-  chunk_size: 1000
-  chunk_overlap: 200
-  default_top_k: 5
-
-server:
-  host: 0.0.0.0
-  port: 8000
-
-skills:
-  sources:
-    - ./skills
-
-workflows:
-  directory: ./workflows
-  default: process-optimization
+前端分别渲染:
+  - agent:token  -> chat bubble (追加流式文字)
+  - kb:result    -> KB sidebar (刷新搜索结果)
 ```
 
 ## Hot-Plug Mechanism
@@ -431,9 +387,47 @@ SkillRegistry wraps deepagents' SkillsMiddleware sources:
 - reload() - force-refresh all skills from configured sources
 - Adding/removing SKILL.md on filesystem is reflected on next agent invocation
 
-## WebSocket Event Protocol
+## Persistence
 
-All events are JSON with a type field:
+### SQLite (session metadata)
+
+```sql
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    workflow_name TEXT NOT NULL,
+    workflow_version TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    checkpoint_id TEXT,
+    node_statuses TEXT,   -- JSON
+    current_node TEXT
+);
+```
+
+### LangGraph Checkpoints (execution state)
+
+LangGraph's built-in filesystem checkpoint backend stores full execution state
+(messages, node statuses, node results) in `data/checkpoints/{session_id}/`.
+
+This enables resume: user closes browser, reopens, selects the session, and the
+workflow continues from the last checkpoint.
+
+## WebSocket Protocol
+
+### Connection Model
+
+- Each session page opens a dedicated WS: `/ws/sessions/{session_id}`
+- KB management page has its own WS: `/ws/kb`
+- Heartbeat every 30 seconds (server-side ping)
+- Auto-reconnect on disconnect (client retries every 1s)
+- On reconnect: server pushes `graph:start` with current state to sync the UI
+
+### Event Transformer (LangGraph -> WS)
+
+See EventTransformer section above for the event mapping.
+
+### Events Table
 
 | Event Type | Direction | Description |
 |------------|-----------|-------------|
@@ -454,11 +448,13 @@ All events are JSON with a type field:
 | agent:thinking | S>C | Thinking indicator |
 | skill:matched | S>C | Skill matched for current step |
 | skill:loaded | S>C | Full SKILL.md content loaded |
-| kb:query | S>C | KB search initiated (query + filters) |
-| kb:result | S>C | KB search results (chunks with snippets) |
-| kb:index_update | S>C | KB index updated (new/deleted docs) |
+| kb:query | S>C | KB search initiated |
+| kb:result | S>C | KB search results |
+| kb:index_update | S>C | KB index updated |
+| kb:index_progress | S>C | KB upload progress |
 | user:message | C>S | User input |
 | user:terminate | C>S | Termination request |
+| user:next_step | C>S | Manual "next step" signal |
 | user:resume_from | C>S | Resume from interrupted node |
 
 ## REST API
@@ -481,7 +477,7 @@ All events are JSON with a type field:
 | DELETE | /api/skills/:name | Unregister |
 | POST | /api/skills/reload | Hot-reload |
 | GET | /api/kb/documents | List indexed documents |
-| POST | /api/kb/upload | Upload document for indexing |
+| POST | /api/kb/upload | Upload document (returns job_id) |
 | DELETE | /api/kb/documents/:id | Remove document |
 | POST | /api/kb/reindex | Re-index all sources |
 | GET | /api/kb/search | Manual KB search |
@@ -490,22 +486,70 @@ All events are JSON with a type field:
 
 Layered approach:
 
-1. Primary: LangGraph interruption - User clicks terminate -> WS sends user:terminate -> Server sets asyncio.Event -> Graph checks at tool call boundaries -> LangGraph NodeInterrupt -> Checkpoint -> WS pushes graph:interrupted
+1. Primary: LangGraph interruption
+   - User clicks terminate -> WS sends user:terminate
+   - Server sets asyncio.Event
+   - Residence loop checks event at each iteration boundary
+   -> NodeInterrupt -> Checkpoint -> WS pushes graph:interrupted
 
-2. Fallback: asyncio task cancellation - If no interruption within timeout -> task.cancel() -> Catch CancelledError -> Save partial checkpoint
-
-KB queries during termination are gracefully cancelled; partial results are discarded.
+2. Fallback: asyncio task cancellation (timeout guard)
+   - If interruption doesn't trigger within timeout -> task.cancel()
+   -> Catch CancelledError -> Save partial checkpoint
 
 After interruption: view saved state, resume from interrupted node, or start over.
+
+## Security (v1)
+
+- No authentication. Server binds to `0.0.0.0` by default.
+- LLM API keys read from environment variables, never logged.
+- CORS configured for the frontend origin.
+- README explicitly warns: "Use only on trusted networks. No auth implemented."
+
+## Configuration
+
+```yaml
+# config.yaml
+llm:
+  provider: openai
+  model: gpt-4o
+  api_key_env: OPENAI_API_KEY
+
+embedding:
+  provider: openai
+  model: text-embedding-3-small
+  api_key_env: OPENAI_API_KEY
+
+knowledge_base:
+  chroma_persist_dir: ./data/chroma
+  chunk_size: 1000
+  chunk_overlap: 200
+  default_top_k: 5
+
+server:
+  host: 0.0.0.0
+  port: 8000
+
+persistence:
+  sqlite_path: ./data/sessions.db
+  checkpoint_dir: ./data/checkpoints
+
+skills:
+  sources:
+    - ./skills
+
+workflows:
+  directory: ./workflows
+  default: process-optimization
+```
 
 ## Frontend Pages
 
 | Page | Route | Content |
 |------|-------|---------|
-| Dashboard | / | Available workflows, active/past sessions |
-| WorkflowDetail | /sessions/:id | DAG, node status, chat, terminate, KB search panel |
-| KnowledgeBase | /kb | Document management, upload, search preview |
-| Analysis | /sessions/:id/analysis | Factor rank, Pareto, heatmap, DOE matrix, scatter |
+| Dashboard | / | Workflow list, active/past sessions |
+| WorkflowDetail | /sessions/:id | WorkflowGraph, AgentChat, KB sidebar, NodeDetail panel, NextStepButton, TerminateButton |
+| KnowledgeBase | /kb | Document list, upload form, upload progress, search preview |
+| Analysis | /sessions/:id/analysis | FactorRankBar, ParetoChart, CorrelationHeatmap, DesignMatrixTable, ScatterTrend |
 | Chat | /sessions/:id/chat | Full-screen agent conversation |
 
 ## Design Decisions
@@ -513,16 +557,18 @@ After interruption: view saved state, resume from interrupted node, or start ove
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Process model | Single process | Simpler deployment |
-| Graph definition | YAML (dynamic) | Adding new workflows requires no code changes |
-| Frontend | React SPA (Vite) | No SEO needed for dashboard |
-| Charts | ECharts | Better complex chart support |
-| WS protocol | JSON Lines | Simple, parseable |
-| Skill-node mapping | skill_match keywords in YAML | Agent-driven, flexible per workflow |
-| Termination | InterruptOnConfig | Graceful, state-preserving |
-| KB vector store | Chroma | Local-first, no external infra needed |
-| KB query | Tool-based (agent decides) | Aligns with progressive disclosure pattern |
-| KB events | kb:query / kb:result in WS | Frontend shows search progress transparently |
+| Graph definition | YAML (dynamic) | True extensibility, no code changes |
+| Node execution | Residence loop | Checkpoint only at node boundaries |
+| State schema | Generic (messages + node_results) | Workflow-agnostic, no Python changes needed |
+| Agent instance | Single shared per session | No per-node startup overhead |
+| State bridge | Message bridge (manual in node) | Simple, explicit, no nested graph complexity |
+| Event conversion | EventTransformer class | Testable, isolated from LangGraph version |
+| KB upload | Async with WS progress | Non-blocking, real-time feedback |
+| WS connection | One per page + auto-reconnect + 30s heartbeat | Simple, resilient |
+| Event ordering | Unordered by type (separate panels) | Tokens and KB results render independently |
+| Persistence | SQLite + LangGraph checkpoint files | Lightweight, no external service |
+| Security | No auth, 0.0.0.0, CORS configured | v1 simplicity, documented risk |
+| Step completion | step_complete tool + manual "next step" button | Dual-path: agent-driven + user-driven |
 | LLM model | Configurable via config.yaml | Support any tool-calling model provider |
 | kb_context | Append-only across nodes | Frontend groups by node name for display |
 | Error recovery | Per-node (configured in YAML) | Different nodes have different error tolerance |
-| Workflow YAML format | Node list + edge list + per-node error strategy | Declarative, deterministic, easy to validate |
