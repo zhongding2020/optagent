@@ -85,7 +85,10 @@ async def reindex():
 async def search(q: str, top_k: int = 5):
     if not _retriever:
         return []
-    docs = _retriever.search(q, top_k=top_k)
+    try:
+        docs = _retriever.search(q, top_k=top_k)
+    except Exception:
+        docs = []
     return [
         {"content": d.page_content[:500], "metadata": d.metadata}
         for d in docs

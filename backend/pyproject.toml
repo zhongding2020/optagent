@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Agent-based process parameter optimization framework"
 requires-python = ">=3.11"
 dependencies = [
-    "deepagents>=1.0",
+    "deepagents>=0.6.0,<0.7.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "websockets>=14",
@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "pyyaml>=6.0",
+    "python-multipart>=0.0.18",
     "langchain-openai>=0.2",
     "langchain-text-splitters>=0.3",
 ]
@@ -30,7 +31,7 @@ line-length = 100
 
 [build-system]
 requires = ["setuptools>=64", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 
 

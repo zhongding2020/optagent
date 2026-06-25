@@ -1,12 +1,11 @@
-from typing import Any, Optional
+from typing import Any
 from deepagents import create_deep_agent
-from deepagents.middleware import (
-    create_skills_middleware,
-    create_filesystem_middleware,
-)
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
-from langchain_ollama import ChatOllama
+try:
+    from langchain_ollama import ChatOllama
+except ImportError:
+    ChatOllama = None
 from langchain_core.language_models import BaseChatModel
 
 from ..config import AppConfig
@@ -27,25 +26,21 @@ def _resolve_model(config: AppConfig) -> BaseChatModel:
     elif provider == "anthropic":
         return ChatAnthropic(model=model)
     elif provider == "ollama":
-        return ChatOllama(model=model)
+        if ChatOllama: return ChatOllama(model=model)
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")
 
 
 def create_optagent_agent(config: AppConfig) -> Any:
-    """Create a deepagents agent with skills + filesystem middleware."""
-    model = _resolve_model(config)
+    """Create a deepagents agent with skills hot-plug support.
 
-    skills_middleware = create_skills_middleware(
-        backend={"type": "filesystem", "root": "/"},
-        sources=config.skills.sources,
-    )
-    fs_middleware = create_filesystem_middleware(
-        backend={"type": "filesystem", "root": "/"},
-    )
+    Uses deepagents' built-in skills parameter which automatically
+    configures SkillsMiddleware for progressive disclosure.
+    """
+    model = _resolve_model(config)
 
     agent = create_deep_agent(
         model=model,
-        middleware=[skills_middleware, fs_middleware],
+        skills=config.skills.sources,
     )
     return agent

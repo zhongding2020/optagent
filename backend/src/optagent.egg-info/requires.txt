@@ -1,4 +1,4 @@
-deepagents>=1.0
+deepagents<0.7.0,>=0.6.0
 fastapi>=0.115
 uvicorn[standard]>=0.32
 websockets>=14
@@ -8,6 +8,9 @@ langchain-community>=0.3
 pydantic>=2.0
 pydantic-settings>=2.0
 pyyaml>=6.0
+python-multipart>=0.0.18
+langchain-openai>=0.2
+langchain-text-splitters>=0.3
 
 [dev]
 pytest>=8.0
