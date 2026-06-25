@@ -10,6 +10,7 @@ services:
       - optagent-data:/app/backend/data
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     restart: unless-stopped
 
 volumes:
