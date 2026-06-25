@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.18",
     "langchain-openai>=0.2",
     "langchain-text-splitters>=0.3",
+    "pypdf>=5.0",
 ]
 
 [project.optional-dependencies]

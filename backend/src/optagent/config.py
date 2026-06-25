@@ -12,9 +12,9 @@ class LLMConfig(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    provider: str = "openai"
-    model: str = "text-embedding-3-small"
-    api_key_env: str = "OPENAI_API_KEY"
+    provider: str = "huggingface"
+    model: str = "BAAI/bge-small-zh-v1.5"
+    device: str = "cpu"
 
 
 class KBConfig(BaseModel):

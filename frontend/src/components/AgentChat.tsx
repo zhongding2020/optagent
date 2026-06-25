@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
+import remarkGfm from 'remark-gfm'
 
 interface Message {
   role: string
@@ -34,13 +35,26 @@ function ChatMessage({ msg }: { msg: Message }) {
             [&_pre]:bg-[#1e1e1e] [&_pre]:text-[#d4d4d4] [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto
             [&_code]:text-[0.85em] [&_p>code]:bg-bg-tertiary [&_p>code]:px-1.5 [&_p>code]:py-0.5 [&_p>code]:rounded
             [&_pre_code]:bg-transparent [&_pre_code]:p-0
-            [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-border [&_th]:p-2 [&_th]:bg-bg-tertiary
+            [&_table]:w-full [&_table]:border-collapse
+            [&_th]:border [&_th]:border-border [&_th]:p-2 [&_th]:bg-bg-tertiary [&_th]:text-left
             [&_td]:border [&_td]:border-border [&_td]:p-2
             [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
             [&_a]:text-accent [&_a]:underline
             [&_blockquote]:border-l-4 [&_blockquote]:border-accent [&_blockquote]:pl-4 [&_blockquote]:text-text-secondary
           ">
-            <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeHighlight]}
+            components={{
+              table: ({ children }: any) => (
+                <div style={{ overflowX: 'auto', maxWidth: '100%', marginBottom: '0.5rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                    {children}
+                  </table>
+                </div>
+              ),
+            }}
+          >
               {msg.content}
             </ReactMarkdown>
           </div>

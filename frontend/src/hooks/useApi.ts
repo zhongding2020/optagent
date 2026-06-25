@@ -22,13 +22,15 @@ export const api = {
     request<{ ok: boolean }>(`/sessions/${id}/terminate`, { method: 'POST' }),
   listSkills: () => request<Record<string, unknown>[]>('/skills'),
   listKbDocuments: () => request<Record<string, unknown>[]>('/kb/documents'),
+  listKbFiles: () => request<Record<string, unknown>[]>('/kb/files'),
+  getKbStats: () => request<Record<string, unknown>>('/kb/stats'),
   uploadKbDocument: async (file: File) => {
     const form = new FormData()
     form.append('file', file)
     const res = await fetch(`${BASE}/kb/upload`, { method: 'POST', body: form })
     return res.json()
   },
-  searchKb: (q: string) => request(`/kb/search?q=${encodeURIComponent(q)}`),
   deleteKbDocument: (id: string) =>
     request<{ ok: boolean }>(`/kb/documents/${id}`, { method: 'DELETE' }),
+  searchKb: (q: string) => request<Record<string, unknown>[]>(`/kb/search?q=${encodeURIComponent(q)}&top_k=5`),
 }

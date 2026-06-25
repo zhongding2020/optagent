@@ -2,9 +2,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from langchain_community.document_loaders import (
-    PyPDFLoader,
     TextLoader,
-    UnstructuredMarkdownLoader,
+    PyPDFLoader,
 )
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
@@ -35,7 +34,7 @@ class KBIngestion:
         if ext == ".pdf":
             return PyPDFLoader(file_path)
         elif ext == ".md":
-            return UnstructuredMarkdownLoader(file_path)
+            return TextLoader(file_path)
         elif ext == ".txt":
             return TextLoader(file_path)
         else:

@@ -51,6 +51,28 @@ export default function Dashboard() {
         ))}
       </div>
 
+      <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">Knowledge Base</h2>
+      <button onClick={() => navigate('/kb')}
+        className="w-full flex items-center gap-4 px-5 py-4 rounded-xl border border-border bg-bg-primary
+                   hover:bg-bg-hover transition-colors mb-12 shadow-sm">
+        <div className="w-10 h-10 rounded-lg bg-accent-light flex items-center justify-center shrink-0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+               strokeLinecap="round" strokeLinejoin="round" className="text-accent">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            <line x1="8" y1="7" x2="16" y2="7" /><line x1="8" y1="11" x2="14" y2="11" />
+            <line x1="8" y1="15" x2="12" y2="15" />
+          </svg>
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-text-primary">Knowledge Base</div>
+          <div className="text-xs text-text-muted">Upload and manage documents for context-aware search</div>
+        </div>
+        <svg className="ml-auto shrink-0 w-4 h-4 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
+
       <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">Recent Sessions</h2>
       {sessions.length === 0 ? (
         <div className="text-center py-12">

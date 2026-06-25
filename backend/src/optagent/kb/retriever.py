@@ -3,25 +3,19 @@ from typing import Any, Dict, List, Optional
 
 import chromadb
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
+from .embedding import FastEmbeddings
 
 
 class KBRetriever:
     """Vector-store backed retriever for the optagent knowledge base."""
 
-    def __init__(
-        self,
-        persist_dir: str = "./data/chroma",
-        embedding_model: str = "text-embedding-3-small",
-    ):
+    def __init__(self, persist_dir: str = "./data/chroma", model_name: str = "BAAI/bge-small-zh-v1.5"):
         self.persist_dir = persist_dir
         Path(persist_dir).parent.mkdir(parents=True, exist_ok=True)
-        self.embeddings = OpenAIEmbeddings(
-        model=embedding_model,
-        max_retries=0,
-        timeout=5,
-    )
+        self.embeddings = FastEmbeddings(
+            model_name=model_name,
+        )
         self.vector_store = Chroma(
             collection_name="optagent_kb",
             embedding_function=self.embeddings,
@@ -40,7 +34,6 @@ class KBRetriever:
 
     def add_documents(self, documents: List[Document]):
         self.vector_store.add_documents(documents)
-        self.vector_store.persist()
 
     def delete_document(self, doc_id: str):
         self.vector_store.delete(ids=[doc_id])

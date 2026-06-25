@@ -1,4 +1,7 @@
-interface Props { nodeStatuses: Record<string, string> }
+interface Props {
+  nodeStatuses: Record<string, string>
+  matchedSkills?: string[]
+}
 
 const LABELS: Record<string, string> = {
   define_objective: 'Define Objective', identify_params: 'Identify Parameters',
@@ -6,15 +9,30 @@ const LABELS: Record<string, string> = {
   analyze_results: 'Analyze Results', generate_report: 'Generate Report',
 }
 
-export default function SkillStatus({ nodeStatuses }: Props) {
+export default function SkillStatus({ nodeStatuses, matchedSkills }: Props) {
+  const hasMatched = matchedSkills && matchedSkills.length > 0
   const active = Object.entries(nodeStatuses).find(([, s]) => s === 'running')
   return (
     <div>
       <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Skills</h4>
+
+      {hasMatched && (
+        <div className="mb-2">
+          <div className="text-[11px] text-accent font-medium mb-1">Matched for this message:</div>
+          <div className="flex flex-wrap gap-1">
+            {matchedSkills!.map((s) => (
+              <span key={s} className="px-2 py-0.5 rounded-full bg-accent-light/20 text-accent text-[10px] font-medium border border-accent/30">
+                {s}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {active ? (
         <div className="text-xs text-accent font-medium mb-2">Active: {LABELS[active[0]] || active[0]}</div>
       ) : (
-        <p className="text-xs text-text-muted mb-2">Waiting...</p>
+        !hasMatched && <p className="text-xs text-text-muted mb-2">Waiting...</p>
       )}
       <div className="flex flex-col gap-1">
         {Object.entries(nodeStatuses).map(([node, st]) => (

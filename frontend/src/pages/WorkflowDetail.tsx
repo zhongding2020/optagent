@@ -24,6 +24,7 @@ export default function WorkflowDetail() {
   let kbChunks: { content: string; metadata: Record<string, string> }[] = []
   const chatMessages: { role: string; content: string }[] = []
   let currentToken = ''
+  const matchedSkills: string[] = []
 
   events.forEach((e) => {
     if (e.type === 'node:enter') nodeStatuses[e.node] = 'running'
@@ -33,11 +34,14 @@ export default function WorkflowDetail() {
     else if (e.type === 'node:retry') nodeStatuses[e.node] = 'retrying'
     else if (e.type === 'agent:token') currentToken += e.content
     else if (e.type === 'agent:message') {
-      if (currentToken) { chatMessages.push({ role: 'assistant', content: currentToken }); currentToken = '' }
+      currentToken = ''
       chatMessages.push({ role: 'assistant', content: e.content })
     }
     else if (e.type === 'user:message') {
       chatMessages.push({ role: 'user', content: e.content })
+    }
+    else if (e.type === 'skill:matched') {
+      if (!matchedSkills.includes(e.skill)) matchedSkills.push(e.skill)
     }
     else if (e.type === 'kb:query') kbQuery = e.query
     else if (e.type === 'kb:result') kbChunks = e.chunks
@@ -77,7 +81,7 @@ export default function WorkflowDetail() {
             <WorkflowGraph nodes={WORKFLOW_NODES} statuses={nodeStatuses} durations={{}} />
           </div>
           <div className="p-4 border-b border-border">
-            <SkillStatus nodeStatuses={nodeStatuses} />
+            <SkillStatus nodeStatuses={nodeStatuses} matchedSkills={matchedSkills} />
           </div>
           <div className="p-4">
             <KbSearchResult query={kbQuery} chunks={kbChunks} />

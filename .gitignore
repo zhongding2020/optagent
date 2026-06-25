@@ -6,3 +6,4 @@ data/
 *.swo
 uv.lock
 *uv.lock
+.env
