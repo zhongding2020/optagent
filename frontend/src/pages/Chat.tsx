@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom'
 import { useWebSocket } from '../hooks/useWebSocket'
 import AgentChat from '../components/AgentChat'
+import ChatInput from "../components/ChatInput"
 import TerminateButton from '../components/TerminateButton'
 
 export default function Chat() {
@@ -27,6 +28,7 @@ export default function Chat() {
         <TerminateButton onClick={terminate} />
       </div>
       <AgentChat messages={messages} />
+      <ChatInput onSend={(msg) => send({ type: 'user:message', content: msg })} />
     </div>
   )
 }

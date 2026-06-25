@@ -5,6 +5,7 @@ import AgentChat from '../components/AgentChat'
 import SkillStatus from '../components/SkillStatus'
 import TerminateButton from '../components/TerminateButton'
 import NextStepButton from '../components/NextStepButton'
+import ChatInput from "../components/ChatInput"
 import KbSearchResult from '../components/KbSearchResult'
 
 const WORKFLOW_NODES = [
@@ -63,6 +64,7 @@ export default function WorkflowDetail() {
         {/* Chat area */}
         <div className="flex-1 flex flex-col min-w-0">
           <AgentChat messages={chatMessages} />
+          <ChatInput onSend={(msg) => send({ type: 'user:message', content: msg })} />
         </div>
 
         {/* Right sidebar */}
