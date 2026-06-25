@@ -1,0 +1,19 @@
+services:
+  optagent-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: optagent
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist SQLite, Chroma, and LangGraph checkpoints
+      - optagent-data:/app/backend/data
+    env_file:
+      - .env
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    restart: unless-stopped
+
+volumes:
+  optagent-data:
