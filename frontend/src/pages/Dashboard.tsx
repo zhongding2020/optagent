@@ -1,62 +1,80 @@
- import { useEffect, useState } from 'react'
- import { useNavigate } from 'react-router-dom'
- import { api } from '../hooks/useApi'
- 
- export default function Dashboard() {
-   const navigate = useNavigate()
-   const [workflows, setWorkflows] = useState<{ name: string }[]>([])
-   const [sessions, setSessions] = useState<Record<string, unknown>[]>([])
- 
-   useEffect(() => {
-     api.listWorkflows().then(setWorkflows).catch(console.error)
-     api.listSessions().then(setSessions).catch(console.error)
-   }, [])
- 
-   const startSession = async (wf: string) => {
-     const session = await api.createSession(wf)
-     navigate(`/sessions/${session.id}`)
-   }
- 
-   const statusColor: Record<string, string> = {
-     pending: '#f59e0b', running: '#3b82f6', completed: '#22c55e',
-     error: '#ef4444', interrupted: '#a855f7',
-   }
- 
-   return (
-     <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', maxWidth: 960, margin: '0 auto' }}>
-       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>OptAgent</h1>
-       <p style={{ color: '#666', marginBottom: 32 }}>Agent-guided process parameter optimization</p>
- 
-       <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>Workflows</h2>
-       <div style={{ display: 'flex', gap: 12, marginBottom: 40 }}>
-         {workflows.map((wf) => (
-           <button key={wf.name} onClick={() => startSession(wf.name)}
-             style={{ padding: '12px 24px', borderRadius: 8, border: '1px solid #ddd',
-               background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 500 }}>
-             {wf.name}
-           </button>
-         ))}
-       </div>
- 
-       <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>Sessions</h2>
-       {sessions.length === 0 && <p style={{ color: '#999' }}>No sessions yet</p>}
-       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-         {sessions.map((s: any) => (
-           <div key={s.id} onClick={() => navigate(`/sessions/${s.id}`)}
-             style={{ padding: 16, borderRadius: 8, border: '1px solid #eee',
-               cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-             <div>
-               <div style={{ fontWeight: 500 }}>{s.workflow_name}</div>
-               <div style={{ fontSize: 12, color: '#999' }}>{s.id?.slice(0, 8)}</div>
-             </div>
-             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-               <span style={{ width: 8, height: 8, borderRadius: '50%',
-                 background: statusColor[s.status] || '#999', display: 'inline-block' }} />
-               <span style={{ fontSize: 13 }}>{s.status}</span>
-             </div>
-           </div>
-         ))}
-       </div>
-     </div>
-   )
- }
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { api } from '../hooks/useApi'
+
+export default function Dashboard() {
+  const navigate = useNavigate()
+  const [workflows, setWorkflows] = useState<{ name: string }[]>([])
+  const [sessions, setSessions] = useState<any[]>([])
+
+  useEffect(() => {
+    api.listWorkflows().then(setWorkflows).catch(() => {})
+    api.listSessions().then(setSessions).catch(() => {})
+  }, [])
+
+  const startSession = async (wf: string) => {
+    const session = await api.createSession(wf)
+    navigate(`/sessions/${session.id}`)
+  }
+
+  const statusBadge = (s: string) => {
+    const colors: Record<string, string> = {
+      pending: 'bg-warning/10 text-warning',
+      running: 'bg-accent/10 text-accent',
+      completed: 'bg-success/10 text-success',
+      error: 'bg-danger/10 text-danger',
+      interrupted: 'bg-warning/10 text-warning',
+    }
+    return colors[s] || 'bg-bg-tertiary text-text-muted'
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto px-8 py-12">
+      <div className="mb-10">
+        <h1 className="text-2xl font-bold text-text-primary mb-1">OptAgent</h1>
+        <p className="text-sm text-text-secondary">Agent-guided process parameter optimization</p>
+      </div>
+
+      <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">Workflows</h2>
+      <div className="flex gap-3 mb-12 flex-wrap">
+        {workflows.map(wf => (
+          <button key={wf.name} onClick={() => startSession(wf.name)}
+            className="px-5 py-3 rounded-xl border border-border bg-bg-primary
+                       hover:bg-bg-hover transition-colors text-sm font-medium text-text-primary
+                       flex items-center gap-2 shadow-sm">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                 strokeLinecap="round" strokeLinejoin="round" className="text-accent shrink-0">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+            {wf.name.replace('-', ' ')}
+          </button>
+        ))}
+      </div>
+
+      <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">Recent Sessions</h2>
+      {sessions.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-sm text-text-muted">No sessions yet. Start a workflow above.</p>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {sessions.map((s: any) => (
+            <button key={s.id} onClick={() => navigate(`/sessions/${s.id}`)}
+              className="w-full text-left flex items-center justify-between px-4 py-3 rounded-xl
+                         hover:bg-bg-hover transition-colors">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${statusBadge(s.status)}`}>
+                  {s.status}
+                </span>
+                <span className="text-sm text-text-primary truncate">{s.id.slice(0, 8)}...</span>
+              </div>
+              <span className="text-xs text-text-muted shrink-0 ml-3">
+                {new Date(s.created_at).toLocaleString()}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
