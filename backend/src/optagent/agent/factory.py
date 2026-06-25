@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 from deepagents import create_deep_agent
 from deepagents.middleware import (
     create_skills_middleware,
@@ -15,7 +15,14 @@ from ..config import AppConfig
 def _resolve_model(config: AppConfig) -> BaseChatModel:
     provider = config.llm.provider
     model = config.llm.model
-    if provider == "openai":
+    if provider == "deepseek":
+        import os
+        return ChatOpenAI(
+            model=model,
+            api_key=os.environ.get("DEEPSEEK_API_KEY"),
+            base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+        )
+    elif provider == "openai":
         return ChatOpenAI(model=model)
     elif provider == "anthropic":
         return ChatAnthropic(model=model)

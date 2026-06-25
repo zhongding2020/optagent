@@ -1,12 +1,12 @@
 llm:
-  provider: openai
-  model: gpt-4o
-  api_key_env: OPENAI_API_KEY
+  provider: deepseek
+  model: deepseek-chat
+  api_key_env: DEEPSEEK_API_KEY
 
 embedding:
-  provider: openai
+  provider: deepseek
   model: text-embedding-3-small
-  api_key_env: OPENAI_API_KEY
+  api_key_env: DEEPSEEK_API_KEY
 
 knowledge_base:
   chroma_persist_dir: ./data/chroma
