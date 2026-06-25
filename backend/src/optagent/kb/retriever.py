@@ -17,7 +17,11 @@ class KBRetriever:
     ):
         self.persist_dir = persist_dir
         Path(persist_dir).parent.mkdir(parents=True, exist_ok=True)
-        self.embeddings = OpenAIEmbeddings(model=embedding_model)
+        self.embeddings = OpenAIEmbeddings(
+        model=embedding_model,
+        max_retries=0,
+        timeout=5,
+    )
         self.vector_store = Chroma(
             collection_name="optagent_kb",
             embedding_function=self.embeddings,
