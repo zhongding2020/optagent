@@ -18,4 +18,6 @@ export type WSEvent =
   | { type: 'kb:query'; query: string; top_k?: number }
   | { type: 'kb:result'; chunks: Array<{ content: string; metadata: Record<string, string> }> }
   | { type: 'kb:index_progress'; job_id: string; phase: string; progress: number; documents: number | null }
+  | { type: 'user:message'; content: string }
+  | { type: 'user:next_step' }
   | { type: 'ping' }
