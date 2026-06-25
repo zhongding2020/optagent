@@ -22,7 +22,7 @@ from .skills.registry import SkillRegistry
 from .workflow.loader import WorkflowLoader
 from .workflow.builder import WorkflowBuilder
 from .workflow.node_runner import NodeRunner
-from .agent.factory import create_optagent_agent
+from .agent.factory import create_optagent_agent, _resolve_model
 from .agent.tools import init_tools
 from .event.transformer import EventTransformer
 from .kb.retriever import KBRetriever
@@ -38,9 +38,11 @@ skill_registry: SkillRegistry = None
 workflow_loader: WorkflowLoader = None
 agent = None
 retriever: KBRetriever = None
+chat_model = None
 ingestion: KBIngestion = None
 
 _active_ws: Dict[str, WSConnection] = {}
+_session_messages: Dict[str, list] = {}
 
 
 async def kb_ws_broadcast(event: Dict[str, Any]):
@@ -83,6 +85,7 @@ async def lifespan(app: FastAPI):
 
     # Init agent
     agent = create_optagent_agent(config)
+    chat_model = _resolve_model(config)
 
     # Init routes
     R.workflows.init(workflow_loader)
@@ -159,8 +162,8 @@ async def session_websocket(websocket: WebSocket, session_id: str):
                 await ws.send({"type": "node:skipped", "node": "user_skipped"})
 
             elif msg_type == "user:message":
-                # Forward user message to agent execution
-                await ws.send({"type": "user:message", "content": msg.get("content", "")})
+                # Process user message through the agent and stream response
+                await _chat_with_agent(session_id, msg.get("content", ""), ws)
 
             elif msg_type == "user:resume_from":
                 await _run_workflow(session_id, ws)
@@ -226,6 +229,36 @@ async def _run_workflow(session_id: str, ws: WSConnection):
 
 
 @app.post("/api/sessions/{session_id}/execute")
+async def _chat_with_agent(session_id: str, user_message: str, ws: WSConnection):
+    """Process a user message through the LLM and stream the response."""
+    if not user_message or chat_model is None:
+        return
+
+    if session_id not in _session_messages:
+        _session_messages[session_id] = []
+
+    # Add and echo user message
+    _session_messages[session_id].append(HumanMessage(content=user_message))
+    await ws.send({"type": "user:message", "content": user_message})
+
+    await ws.send({"type": "agent:thinking"})
+
+    try:
+        full_content = ""
+        async for chunk in chat_model.astream(_session_messages[session_id]):
+            if hasattr(chunk, "content") and chunk.content:
+                full_content += chunk.content
+                await ws.send({"type": "agent:token", "content": chunk.content})
+
+        if full_content:
+            _session_messages[session_id].append(AIMessage(content=full_content))
+            await ws.send({"type": "agent:message", "content": full_content})
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        await ws.send({"type": "graph:error", "error": "Agent processing failed"})
+
+
 async def execute_session(session_id: str):
     from fastapi import HTTPException
     meta = session_manager.get_session(session_id)

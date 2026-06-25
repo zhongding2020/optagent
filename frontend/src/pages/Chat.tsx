@@ -11,7 +11,10 @@ export default function Chat() {
   const messages: { role: string; content: string }[] = []
   let currentToken = ''
   events.forEach((e) => {
-    if (e.type === 'agent:token') currentToken += e.content
+    if (e.type === 'user:message') {
+      messages.push({ role: 'user', content: e.content })
+    }
+    else if (e.type === 'agent:token') currentToken += e.content
     else if (e.type === 'agent:message') {
       if (currentToken) { messages.push({ role: 'assistant', content: currentToken }); currentToken = '' }
       messages.push({ role: 'assistant', content: e.content })

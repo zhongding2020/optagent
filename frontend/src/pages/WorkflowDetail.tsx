@@ -36,6 +36,9 @@ export default function WorkflowDetail() {
       if (currentToken) { chatMessages.push({ role: 'assistant', content: currentToken }); currentToken = '' }
       chatMessages.push({ role: 'assistant', content: e.content })
     }
+    else if (e.type === 'user:message') {
+      chatMessages.push({ role: 'user', content: e.content })
+    }
     else if (e.type === 'kb:query') kbQuery = e.query
     else if (e.type === 'kb:result') kbChunks = e.chunks
   })
