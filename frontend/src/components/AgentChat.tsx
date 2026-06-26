@@ -2,10 +2,12 @@ import { useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
+import AnalysisChart from './AnalysisChart'
 
 interface Message {
   role: string
   content: string
+  charts?: { chartType: string; data: Record<string, any>; label?: string }[]
 }
 
 interface Props {
@@ -31,6 +33,7 @@ function ChatMessage({ msg }: { msg: Message }) {
             {msg.content}
           </div>
         ) : (
+          <>
           <div className="px-4 py-2.5 rounded-2xl bg-bg-secondary text-text-primary text-sm leading-relaxed prose prose-sm max-w-none
             [&_pre]:bg-[#1e1e1e] [&_pre]:text-[#d4d4d4] [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto
             [&_code]:text-[0.85em] [&_p>code]:bg-bg-tertiary [&_p>code]:px-1.5 [&_p>code]:py-0.5 [&_p>code]:rounded
@@ -58,6 +61,14 @@ function ChatMessage({ msg }: { msg: Message }) {
               {msg.content}
             </ReactMarkdown>
           </div>
+          {msg.charts && msg.charts.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {msg.charts.map((chart, ci) => (
+                <AnalysisChart key={ci} chartType={chart.chartType} data={chart.data} label={chart.label} />
+              ))}
+            </div>
+          )}
+          </>
         )}
       </div>
     </div>

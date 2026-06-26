@@ -27,6 +27,15 @@ export default function WorkflowDetail() {
   let currentToken = ''
   const matchedSkills: string[] = []
   let workflowComplete = false
+  let pendingCharts: { chartType: string; data: Record<string, any>; label?: string }[] = []
+  const ANALYSIS_TOOLS: Record<string, string> = {
+    factor_importance: 'factor_importance',
+    correlation_analysis: 'correlation_analysis',
+    pareto_analysis: 'pareto_analysis',
+    response_surface: 'response_surface',
+    design_experiment: 'design_experiment',
+    anova_one_way: 'anova_one_way',
+  }
 
   events.forEach((e) => {
     if (e.type === 'node:enter') nodeStatuses[e.node] = 'running'
@@ -39,8 +48,13 @@ export default function WorkflowDetail() {
     else if (e.type === 'node:retry') nodeStatuses[e.node] = 'retrying'
     else if (e.type === 'agent:token') currentToken += e.content
     else if (e.type === 'agent:message') {
+      const msg: any = { role: 'assistant', content: e.content }
+      if (pendingCharts.length > 0) {
+        msg.charts = [...pendingCharts]
+        pendingCharts = []
+      }
+      chatMessages.push(msg)
       currentToken = ''
-      chatMessages.push({ role: 'assistant', content: e.content })
     }
     else if (e.type === 'user:message') {
       chatMessages.push({ role: 'user', content: e.content })
@@ -50,6 +64,25 @@ export default function WorkflowDetail() {
     }
     else if (e.type === 'kb:query') kbQuery = e.query
     else if (e.type === 'kb:result') kbChunks = e.chunks
+    else if (e.type === 'agent:tool_result') {
+      const chartType = ANALYSIS_TOOLS[e.tool as string]
+      if (chartType) {
+        try {
+          const parsed = JSON.parse(e.output as string)
+          if (parsed && !parsed.error) {
+            const labels: Record<string, string> = {
+              factor_importance: 'Factor Importance Ranking',
+              correlation_analysis: 'Correlation Analysis',
+              pareto_analysis: 'Pareto Analysis',
+              response_surface: 'Response Surface Model',
+              design_experiment: 'DOE Design',
+              anova_one_way: 'ANOVA Analysis',
+            }
+            pendingCharts.push({ chartType, data: parsed, label: labels[chartType] || '' })
+          }
+        } catch {}
+      }
+    }
     else if (e.type === 'graph:end') workflowComplete = true
   })
   if (currentToken) chatMessages.push({ role: 'assistant', content: currentToken + '...' })
