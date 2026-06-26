@@ -37,7 +37,7 @@ export default function ChatInput({ onSend, onUpload, disabled }: Props) {
       <div className="flex items-center gap-2 px-4 py-4 mx-auto max-w-3xl">
         {onUpload && (
           <>
-            <input type="file" ref={fileRef} hidden onChange={handleFileChange} accept=".csv,.txt" />
+            <input type="file" ref={fileRef} hidden onChange={handleFileChange} accept=".csv,.txt,.xlsx,.xls" />
             <button onClick={() => fileRef.current?.click()}
               disabled={disabled || uploading}
               className="p-3 rounded-xl text-text-muted hover:text-text-primary hover:bg-bg-hover disabled:opacity-40 transition-all"

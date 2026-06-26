@@ -133,40 +133,38 @@ async def terminate_session(session_id: str):
 
 @router.post("/{session_id}/upload")
 async def upload_session_file(session_id: str, file: UploadFile = File(...)):
-    if not _store:
-        raise HTTPException(503, "Not initialized")
-    if not file.filename:
-        raise HTTPException(400, "No file provided")
-    
-    # Read and parse file
-    content = await file.read()
-    try:
-        text = content.decode("utf-8-sig")  # Handle BOM
-    except UnicodeDecodeError:
-        raise HTTPException(400, "File must be UTF-8 encoded")
-    
-    # Parse CSV
-    try:
-        reader = csv.DictReader(io.StringIO(text))
-        columns = reader.fieldnames or []
-        rows = []
-        for row in reader:
-            rows.append([row.get(c, "") for c in columns])
-    except Exception as e:
-        raise HTTPException(400, f"Failed to parse CSV: {e}")
-    
-    if not columns:
-        raise HTTPException(400, "No columns found in CSV file")
-    
+    if not _store: raise HTTPException(503, "Not initialized")
+    if not file.filename: raise HTTPException(400, "No file provided")
+    content = await file.read(); fname = file.filename.lower()
+
+    if fname.endswith((".csv", ".txt")):
+        try:
+            reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+            columns = reader.fieldnames or []
+            rows = [[row.get(c, "") for c in columns] for row in reader]
+        except Exception as e:
+            raise HTTPException(400, f"Failed to parse CSV: {e}")
+
+    elif fname.endswith(".xlsx"):
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+            ws = wb.active
+            rows_iter = ws.iter_rows(values_only=True)
+            header = next(rows_iter)
+            columns = [str(c) if c is not None else f"col_{i}" for i, c in enumerate(header)]
+            rows = [[str(v) if v is not None else "" for v in row] for row in rows_iter]
+        except ImportError:
+            raise HTTPException(500, "Excel support requires: pip install openpyxl")
+        except Exception as e:
+            raise HTTPException(400, f"Failed to parse Excel: {e}")
+
+    else:
+        raise HTTPException(400, "Unsupported format. Use CSV, TXT, or XLSX.")
+
+    if not columns: raise HTTPException(400, "No columns found")
     data = {"columns": columns, "rows": rows, "filename": file.filename}
-    data_key = str(uuid.uuid4())
-    store_uploaded_data(data_key, data)
-    store_uploaded_data(session_id, data)  # Convenience key
-    
-    return {
-        "data_key": data_key,
-        "filename": file.filename,
-        "columns": columns,
-        "total_rows": len(rows),
-        "preview": rows[:3],
-    }
+    key = str(uuid.uuid4())
+    store_uploaded_data(key, data); store_uploaded_data(session_id, data)
+    return {"data_key": key, "filename": file.filename, "columns": columns,
+            "total_rows": len(rows), "preview": rows[:3]}
