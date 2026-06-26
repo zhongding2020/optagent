@@ -1,14 +1,19 @@
+import json
 from fastapi import APIRouter, HTTPException
 from ...models.session import SessionCreate
+from langchain_core.messages import messages_from_dict
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 _manager = None
+_store = None
 
 
-def init(manager):
+def init(manager, store=None):
     global _manager
+    global _store
     _manager = manager
+    _store = store
 
 
 @router.post("")
@@ -43,6 +48,37 @@ async def delete_session(session_id: str):
         raise HTTPException(503, "Not initialized")
     _manager.delete_session(session_id)
     return {"ok": True}
+
+
+@router.get("/{session_id}/state")
+async def get_session_state(session_id: str):
+    if not _manager:
+        raise HTTPException(503, "Not initialized")
+    session = _manager.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    # Load messages from store for accurate count
+    msg_count = 0
+    if _store:
+        msg_json = _store.load_session_messages(session_id)
+        if msg_json:
+            try:
+                msg_count = len(messages_from_dict(json.loads(msg_json)))
+            except Exception:
+                msg_count = 0
+    return {
+        "session_id": session.id,
+        "workflow_name": session.workflow_name,
+        "status": session.status,
+        "current_node": session.current_node,
+        "node_statuses": {
+            k: v.model_dump() for k, v in session.node_statuses.items()
+        },
+        "node_results": session.node_results,
+        "message_count": msg_count,
+        "created_at": session.created_at.isoformat(),
+        "updated_at": session.updated_at.isoformat(),
+    }
 
 
 @router.post("/{session_id}/terminate")

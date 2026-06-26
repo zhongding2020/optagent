@@ -12,8 +12,8 @@ class LLMConfig(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    provider: str = "huggingface"
-    model: str = "BAAI/bge-small-zh-v1.5"
+    provider: str = "ngram"
+    model: str = "ngram"
     device: str = "cpu"
 
 

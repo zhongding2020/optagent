@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import AppConfig
 from .persistence.store import SessionStore
+from .backends import register as register_backend
 from .server.session_manager import SessionManager
 from .server.ws import WSConnection
 from .server import routes as R
@@ -65,6 +66,7 @@ async def lifespan(app: FastAPI):
     # Init persistence
     store = SessionStore(config.persistence.sqlite_path)
     session_manager = SessionManager(store, config)
+    register_backend("sqlite", type(store))
 
     # Init KB
     retriever = KBRetriever(
@@ -95,7 +97,7 @@ async def lifespan(app: FastAPI):
 
     # Init routes
     R.workflows.init(workflow_loader)
-    R.sessions.init(session_manager)
+    R.sessions.init(session_manager, store)
     R.skills.init(skill_registry)
     R.kb.init(retriever, ingestion, kb_ws_broadcast)
     R.data.init(store)
