@@ -1,15 +1,34 @@
 import ReactECharts from 'echarts-for-react'
-export default function FactorRankBar() {
+
+interface Props {
+  data?: { name: string; value: number }[]
+}
+
+export default function FactorRankBar({ data = [] }: Props) {
+  const hasData = data.length > 0
+  const names = hasData ? data.map(d => d.name) : ['—']
+  const values = hasData ? data.map(d => d.value) : [0]
+  const color = hasData ? '#3b82f6' : '#e5e7eb'
+
   const option = {
     title: { text: 'Factor Importance Ranking', left: 'center', textStyle: { fontSize: 14 } },
-    xAxis: { type: 'category', data: ['Temp', 'Pressure', 'Time', 'pH', 'Speed'], axisLabel: { rotate: 30 } },
+    xAxis: { type: 'category', data: names, axisLabel: { rotate: hasData ? 30 : 0 } },
     yAxis: { type: 'value', name: 'Effect Size' },
-    series: [{ type: 'bar', data: [42, 35, 28, 15, 8], itemStyle: { color: '#3b82f6', borderRadius: [4, 4, 0, 0] } }],
+    series: [{ type: 'bar', data: values, itemStyle: { color, borderRadius: [4, 4, 0, 0] } }],
     grid: { bottom: 60 },
   }
   return (
     <div className="p-4 rounded-xl border border-border bg-bg-primary">
-      <ReactECharts option={option} style={{ height: 280 }} />
+      {hasData ? (
+        <ReactECharts option={option} style={{ height: 280 }} />
+      ) : (
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center justify-center z-10" style={{ height: 280 }}>
+            <span className="text-xs text-text-muted bg-bg-primary/80 px-3 py-1 rounded">Complete the workflow to see factor analysis</span>
+          </div>
+          <ReactECharts option={option} style={{ height: 280, opacity: 0.3 }} />
+        </div>
+      )}
     </div>
   )
 }

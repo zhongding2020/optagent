@@ -22,6 +22,7 @@ class SessionMetadata(BaseModel):
     checkpoint_id: Optional[str] = None
     current_node: Optional[str] = None
     node_statuses: dict[str, NodeStatus] = Field(default_factory=dict)
+    node_results: dict[str, Any] = Field(default_factory=dict)
 
 
 class SessionCreate(BaseModel):

@@ -9,6 +9,15 @@ const colors: Record<string, string> = {
   retrying: 'bg-warning',
 }
 
+const lineColors: Record<string, string> = {
+  pending: 'bg-border',
+  running: 'bg-accent',
+  completed: 'bg-success',
+  error: 'bg-danger',
+  skipped: 'bg-warning',
+  retrying: 'bg-warning',
+}
+
 const labels: Record<string, string> = {
   define_objective: 'Define Objective', identify_params: 'Identify Parameters',
   design_doe: 'Design DOE', collect_data: 'Collect Data',
@@ -20,11 +29,14 @@ export default function WorkflowGraph({ nodes, statuses, durations }: Props) {
     <div className="flex flex-col gap-0.5">
       {nodes.map((node, i) => {
         const s = statuses[node] || 'pending'
+        const lineColor = lineColors[s] || 'bg-border'
         return (
           <div key={node}>
-            <div className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md
-              ${s === 'running' ? 'bg-accent/5' : ''}`}>
-              <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 transition-colors ${colors[s] || colors.pending}`} />
+            <div className={`flex items-center gap-2.5 px-2 py-1.5 rounded-md transition-colors
+              ${s === 'running' ? 'bg-accent/5 ring-1 ring-accent/20' : ''}`}>
+              <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 transition-all duration-500
+                ${colors[s] || colors.pending}
+                ${s === 'running' ? 'animate-pulse shadow-sm shadow-accent/40' : ''}`} />
               <span className={`text-xs font-medium flex-1 ${s === 'running' ? 'text-accent' : 'text-text-secondary'}`}>
                 {labels[node] || node}
               </span>
@@ -33,7 +45,7 @@ export default function WorkflowGraph({ nodes, statuses, durations }: Props) {
               )}
             </div>
             {i < nodes.length - 1 && (
-              <div className={`ml-[11px] w-0.5 h-3 ${s === 'completed' ? 'bg-success' : 'bg-border'}`} />
+              <div className={`ml-[11px] w-0.5 h-3 transition-colors duration-500 ${lineColor}`} />
             )}
           </div>
         )

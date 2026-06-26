@@ -18,6 +18,7 @@ class SessionStore:
 
     def _init_db(self):
         with self._get_conn() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
                     id TEXT PRIMARY KEY,
@@ -28,9 +29,16 @@ class SessionStore:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     checkpoint_id TEXT,
                     current_node TEXT,
-                    node_statuses TEXT DEFAULT '{}'
+                    node_statuses TEXT DEFAULT '{}',
+                    node_results TEXT DEFAULT '{}'
                 )
             """)
+        # Migration: add column for existing databases
+        try:
+            with self._get_conn() as conn:
+                conn.execute("ALTER TABLE sessions ADD COLUMN node_results TEXT DEFAULT '{}'")
+        except sqlite3.OperationalError:
+            pass
 
     def create(self, session: SessionCreate) -> SessionMetadata:
         import uuid
@@ -52,6 +60,10 @@ class SessionStore:
             ).fetchone()
             if not row:
                 return None
+            try:
+                raw = row["node_results"]
+            except (IndexError, KeyError):
+                raw = "{}"
             return SessionMetadata(
                 id=row["id"],
                 workflow_name=row["workflow_name"],
@@ -65,6 +77,7 @@ class SessionStore:
                     k: NodeStatus(**v)
                     for k, v in json.loads(row["node_statuses"]).items()
                 },
+                node_results=json.loads(raw) if raw else {},
             )
 
     def list(self) -> list[SessionMetadata]:
@@ -84,6 +97,7 @@ class SessionStore:
                         k: NodeStatus(**v)
                         for k, v in json.loads(r["node_statuses"]).items()
                     },
+                    node_results={},
                 )
                 for r in rows
             ]
@@ -91,12 +105,12 @@ class SessionStore:
     def update(self, meta: SessionMetadata):
         with self._get_conn() as conn:
             conn.execute(
-                """UPDATE sessions SET status=?, updated_at=?,
-                   checkpoint_id=?, current_node=?, node_statuses=?
+                """UPDATE sessions SET status=?, updated_at=?, checkpoint_id=?, current_node=?, node_statuses=?, node_results=?
                    WHERE id=?""",
                 (meta.status, meta.updated_at.isoformat(),
                  meta.checkpoint_id, meta.current_node,
                  json.dumps({k: v.model_dump() for k, v in meta.node_statuses.items()}),
+                 json.dumps(meta.node_results),
                  meta.id),
             )
 

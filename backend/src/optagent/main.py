@@ -5,6 +5,7 @@ Initializes all subsystems: config, persistence, KB, skills, workflow, agent.
 """
 
 import asyncio, time
+from datetime import datetime
 import json
 import logging
 import re
@@ -24,6 +25,7 @@ from .skills.registry import SkillRegistry
 from .workflow.loader import WorkflowLoader
 from .agent.factory import create_optagent_agent, _resolve_model
 from .agent.tools import init_tools, query_knowledge_base, step_complete
+from .models.session import NodeStatus
 from .kb.retriever import KBRetriever
 from .kb.ingestion import KBIngestion
 from .server.routes.kb import track_search as track_kb_search
@@ -230,6 +232,14 @@ async def _start_workflow(session_id: str, ws: Any, wf_state: dict):
                 f"请根据专业技能引导用户完成本步骤目标。完成后，使用 step_complete 工具进入下一步。"
     ))
 
+    # Persist node status to store
+    meta = session_manager.get_session(session_id)
+    if meta:
+        meta.current_node = defn.nodes[0].id
+        meta.node_statuses[defn.nodes[0].id] = NodeStatus(status="running", started_at=datetime.utcnow())
+        meta.status = "running"
+        store.update(meta)
+
     await ws.send({
         "type": "graph:start",
         "session_id": session_id,
@@ -256,6 +266,16 @@ async def _advance_workflow(session_id: str, ws: Any, wf_state: dict, result: di
     wf_state["completed_nodes"].append(current_node.id)
     wf_state["node_results"][current_node.id] = {"summary": result.get("summary", "")}
 
+    # Persist to store
+    meta = session_manager.get_session(session_id)
+    if meta:
+        meta.node_statuses[current_node.id] = NodeStatus(
+            status="completed", duration_ms=None,
+            completed_at=datetime.utcnow(),
+        )
+        meta.node_results[current_node.id] = {"summary": result.get("summary", "")}
+        store.update(meta)
+
     await ws.send({
         "type": "node:exit",
         "node": current_node.id,
@@ -267,6 +287,11 @@ async def _advance_workflow(session_id: str, ws: Any, wf_state: dict, result: di
         next_node = defn.nodes[next_idx]
         wf_state["current_node_idx"] = next_idx
         wf_state["node_statuses"][next_node.id] = "running"
+        # Persist next node status
+        if meta:
+            meta.current_node = next_node.id
+            meta.node_statuses[next_node.id] = NodeStatus(status="running", started_at=datetime.utcnow())
+            store.update(meta)
         # Add next step instruction
         _session_messages[session_id].append(HumanMessage(
             content=f"[工作流] 步骤“{current_node.name}”已完成。现在进入下一步：{next_node.name}（{next_node.id}）。"
@@ -281,6 +306,7 @@ async def _advance_workflow(session_id: str, ws: Any, wf_state: dict, result: di
         meta = session_manager.get_session(session_id)
         if meta:
             meta.status = "completed"
+            meta.node_results = wf_state.get("node_results", {})
             store.update(meta)
         await ws.send({
             "type": "graph:end",

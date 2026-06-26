@@ -33,4 +33,6 @@ export const api = {
   deleteKbDocument: (id: string) =>
     request<{ ok: boolean }>(`/kb/documents/${id}`, { method: 'DELETE' }),
   searchKb: (q: string) => request<Record<string, unknown>[]>(`/kb/search?q=${encodeURIComponent(q)}&top_k=5`),
+  getAnalysisData: (sessionId: string) =>
+    request<Record<string, unknown>>(`/sessions/${sessionId}/data`),
 }

@@ -2,6 +2,7 @@
 
 > 最后更新：2026-06-25 21:30
 > 最后更新：2026-06-25 22:30
+> 最后更新：2026-06-26 01:30
 > 用途：追踪设计与实现的差距，持续刷新功能完成状态
 
 ---
@@ -29,8 +30,11 @@
 | # | 功能 | 描述 | 状态 | 文件 |
 |---|------|------|------|------|
 | 5 | `GET /api/sessions/:id/data` | 从 `node_results` 提取因子排序、相关性等 | [ ] | `server/routes/data.py` |
+ | 5 | `GET /api/sessions/:id/data` | 从 `node_results` 提取分析数据，含因子排序、Pareto、相关性、设计矩阵 | [x] | `server/routes/data.py`, `models/session.py` |
 | 6 | Analysis 图表接真实数据 | 5 个 ECharts 组件从 API 获取数据 | [ ] | `pages/Analysis.tsx`, `charts/*` |
+ | 6 | Analysis 图表接真实数据 | 5 个 ECharts 组件从 API 获取数据，支持数据空态与加载态 | [x] | `pages/Analysis.tsx`, `charts/*` |
 | 7 | WorkflowGraph 状态更新 | 根据 WS 事件实时更新节点状态 | [ ] | `components/WorkflowGraph.tsx` |
+ | 7 | WorkflowGraph 状态更新 | 连线颜色根据节点状态变化（completed=green, running=blue），运行节点脉冲动画 | [x] | `components/WorkflowGraph.tsx` |
 
 ## P2 — 生产化
 
