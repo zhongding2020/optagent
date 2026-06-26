@@ -13,6 +13,7 @@ export type WSEvent =
   | { type: 'agent:token'; content: string }
   | { type: 'agent:tool_call'; tool: string; args: Record<string, unknown> }
   | { type: 'agent:tool_result'; tool: string; output: string }
+  | { type: 'agent:stats'; session_id: string; input_tokens: number; output_tokens: number; session_input_total: number; session_output_total: number }
   | { type: 'agent:thinking' }
   | { type: 'skill:matched'; skill: string }
   | { type: 'kb:query'; query: string; top_k?: number }

@@ -27,8 +27,9 @@ export default function WorkflowDetail() {
   let currentToken = ''
   const matchedSkills: string[] = []
   let workflowComplete = false
-  let pendingCharts: { chartType: string; data: Record<string, any>; label?: string }[] = []
-  const ANALYSIS_TOOLS: Record<string, string> = {
+ let pendingCharts: { chartType: string; data: Record<string, any>; label?: string }[] = []
+  let tokenStats = { input: 0, output: 0 }
+ const ANALYSIS_TOOLS: Record<string, string> = {
     factor_importance: 'factor_importance',
     correlation_analysis: 'correlation_analysis',
     pareto_analysis: 'pareto_analysis',
@@ -83,6 +84,9 @@ export default function WorkflowDetail() {
         } catch {}
       }
     }
+    else if (e.type === 'agent:stats') {
+      tokenStats = { input: e.session_input_total, output: e.session_output_total }
+    }
     else if (e.type === 'graph:end') workflowComplete = true
   })
   if (currentToken) chatMessages.push({ role: 'assistant', content: currentToken + '...' })
@@ -103,6 +107,14 @@ export default function WorkflowDetail() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {(tokenStats.input > 0 || tokenStats.output > 0) && (
+            <div className="flex items-center gap-1 text-[10px] text-text-muted font-mono">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+              </svg>
+              <span>{tokenStats.input}→{tokenStats.output}</span>
+            </div>
+          )}
           <NextStepButton onClick={nextStep} />
           <TerminateButton onClick={terminate} />
         </div>

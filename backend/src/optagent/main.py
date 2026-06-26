@@ -56,6 +56,7 @@ ingestion: KBIngestion = None
 
 _active_ws: Dict[str, WSConnection] = {}
 _session_messages: Dict[str, list] = {}
+_session_token_counts: Dict[str, dict] = {}
 _workflow_states: Dict[str, dict] = {}
 
 
@@ -484,6 +485,7 @@ async def _chat_with_agent(session_id: str, user_message: str, ws: Any, cancel_e
     await ws.send({"type": "agent:thinking"})
 
     full_content = ""
+    output_tokens = 0
     step_completed = False
     step_summary = ""
     try:
@@ -506,6 +508,7 @@ async def _chat_with_agent(session_id: str, user_message: str, ws: Any, cancel_e
                     content = chunk.get("content", "") or ""
                 if content:
                     full_content += content
+                    output_tokens += 1
                     await ws.send({"type": "agent:token", "content": content})
 
             elif event_name == "on_tool_start":
@@ -544,6 +547,22 @@ async def _chat_with_agent(session_id: str, user_message: str, ws: Any, cancel_e
             _session_messages[session_id].append(AIMessage(content=full_content))
             full_content = _fix_markdown_tables(full_content)
             await ws.send({"type": "agent:message", "content": full_content})
+
+        # Track token usage and send stats
+        input_tokens = len(user_message) // 4 + 1
+        if session_id not in _session_token_counts:
+            _session_token_counts[session_id] = {"input": 0, "output": 0}
+        _session_token_counts[session_id]["input"] += input_tokens
+        _session_token_counts[session_id]["output"] += output_tokens
+        await ws.send({
+            "type": "agent:stats",
+            "session_id": session_id,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "session_input_total": _session_token_counts[session_id]["input"],
+            "session_output_total": _session_token_counts[session_id]["output"],
+        })
+
     except Exception:
         logger.exception("Agent streaming failed")
         await ws.send({"type": "graph:error", "error": "Agent processing failed"})
