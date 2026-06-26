@@ -16,6 +16,7 @@ class SessionMetadata(BaseModel):
     id: str
     workflow_name: str
     workflow_version: str = "1.0"
+    name: str = ""
     status: str = "pending"  # pending | running | completed | error | interrupted
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -27,3 +28,4 @@ class SessionMetadata(BaseModel):
 
 class SessionCreate(BaseModel):
     workflow_name: str = "process-optimization"
+    name: Optional[str] = None  # user-friendly name; defaults to workflow_name

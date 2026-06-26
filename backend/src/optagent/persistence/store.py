@@ -24,6 +24,7 @@ class SessionStore:
                     id TEXT PRIMARY KEY,
                     workflow_name TEXT NOT NULL,
                     workflow_version TEXT NOT NULL DEFAULT '1.0',
+                    name TEXT DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -45,6 +46,11 @@ class SessionStore:
                 conn.execute("ALTER TABLE sessions ADD COLUMN messages TEXT DEFAULT '[]'")
         except sqlite3.OperationalError:
             pass
+        try:
+            with self._get_conn() as conn:
+                conn.execute("ALTER TABLE sessions ADD COLUMN name TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
 
     def create(self, session: SessionCreate) -> SessionMetadata:
         import uuid
@@ -54,8 +60,8 @@ class SessionStore:
         )
         with self._get_conn() as conn:
             conn.execute(
-                "INSERT INTO sessions (id, workflow_name, status) VALUES (?, ?, ?)",
-                (meta.id, meta.workflow_name, meta.status),
+                "INSERT INTO sessions (id, workflow_name, name, status) VALUES (?, ?, ?, ?)",
+                (meta.id, meta.workflow_name, meta.name, meta.status),
             )
         return meta
 
@@ -74,6 +80,7 @@ class SessionStore:
                 id=row["id"],
                 workflow_name=row["workflow_name"],
                 workflow_version=row["workflow_version"],
+                name=row["name"],
                 status=row["status"],
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
@@ -95,6 +102,7 @@ class SessionStore:
                 SessionMetadata(
                     id=r["id"], workflow_name=r["workflow_name"],
                     workflow_version=r["workflow_version"],
+                    name=r["name"],
                     status=r["status"], created_at=r["created_at"],
                     updated_at=r["updated_at"],
                     checkpoint_id=r["checkpoint_id"],
@@ -111,10 +119,11 @@ class SessionStore:
     def update(self, meta: SessionMetadata):
         with self._get_conn() as conn:
             conn.execute(
-                """UPDATE sessions SET status=?, updated_at=?, checkpoint_id=?, current_node=?, node_statuses=?, node_results=?
+                """UPDATE sessions SET status=?, updated_at=?, checkpoint_id=?, current_node=?, name=?, node_statuses=?, node_results=?
                    WHERE id=?""",
                 (meta.status, meta.updated_at.isoformat(),
                  meta.checkpoint_id, meta.current_node,
+                 meta.name,
                  json.dumps({k: v.model_dump() for k, v in meta.node_statuses.items()}),
                  json.dumps(meta.node_results),
                  meta.id),

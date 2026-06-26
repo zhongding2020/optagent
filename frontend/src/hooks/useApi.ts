@@ -21,6 +21,15 @@ export const api = {
   terminateSession: (id: string) =>
     request<{ ok: boolean }>(`/sessions/${id}/terminate`, { method: 'POST' }),
   listSkills: () => request<Record<string, unknown>[]>('/skills'),
+  renameSession: (id: string, name: string) =>
+    request<Record<string, unknown>>(`/sessions/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+  getSessionMessages: (id: string) =>
+    request<{ messages: { role: string; content: string }[]; total: number }>(`/sessions/${id}/messages`),
+  deleteSession: (id: string) =>
+    request<{ ok: boolean }>(`/sessions/${id}`, { method: 'DELETE' }),
   listKbDocuments: () => request<Record<string, unknown>[]>('/kb/documents'),
   listKbFiles: () => request<Record<string, unknown>[]>('/kb/files'),
   getKbStats: () => request<Record<string, unknown>>('/kb/stats'),

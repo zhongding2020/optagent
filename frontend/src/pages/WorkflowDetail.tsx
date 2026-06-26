@@ -1,5 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { useWebSocket } from '../hooks/useWebSocket'
+import { api } from '../hooks/useApi'
 import WorkflowGraph from '../components/WorkflowGraph'
 import AgentChat from '../components/AgentChat'
 import SkillStatus from '../components/SkillStatus'
@@ -27,7 +29,8 @@ export default function WorkflowDetail() {
   let currentToken = ''
   const matchedSkills: string[] = []
   let workflowComplete = false
- let pendingCharts: { chartType: string; data: Record<string, any>; label?: string }[] = []
+  const [initialHistory, setInitialHistory] = useState<{ role: string; content: string }[]>([])
+  let pendingCharts: { chartType: string; data: Record<string, any>; label?: string }[] = []
   let tokenStats = { input: 0, output: 0 }
  const ANALYSIS_TOOLS: Record<string, string> = {
     factor_importance: 'factor_importance',
@@ -91,6 +94,13 @@ export default function WorkflowDetail() {
   })
   if (currentToken) chatMessages.push({ role: 'assistant', content: currentToken + '...' })
 
+  useEffect(() => {
+    if (!id) return
+    api.getSessionMessages(id).then((res: any) => {
+      if (res?.messages) setInitialHistory(res.messages.map((m: any) => ({ role: m.role, content: m.content })))
+    }).catch(() => {})
+  }, [id])
+
   return (
     <div className="h-full flex flex-col">
       {/* Top bar */}
@@ -124,7 +134,7 @@ export default function WorkflowDetail() {
       <div className="flex-1 flex overflow-hidden">
         {/* Chat area */}
         <div className="flex-1 flex flex-col min-w-0">
-          <AgentChat messages={chatMessages} />
+          <AgentChat messages={[...initialHistory, ...chatMessages]} />
           <ChatInput onSend={(msg) => send({ type: 'user:message', content: msg })} />
         </div>
 

@@ -50,6 +50,45 @@ async def delete_session(session_id: str):
     return {"ok": True}
 
 
+@router.patch("/{session_id}")
+async def update_session(session_id: str, body: dict):
+    if not _store:
+        raise HTTPException(503, "Not initialized")
+    session = _store.get(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    if "name" in body:
+        session.name = str(body["name"])
+    if "workflow_name" in body:
+        session.workflow_name = str(body["workflow_name"])
+    _store.update(session)
+    return session.model_dump()
+
+
+@router.get("/{session_id}/messages")
+async def get_session_messages(session_id: str):
+    if not _store:
+        raise HTTPException(503, "Not initialized")
+    session = _store.get(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    msg_json = _store.load_session_messages(session_id)
+    if not msg_json:
+        return {"messages": [], "total": 0}
+    try:
+        msgs = messages_from_dict(json.loads(msg_json))
+        return {
+            "messages": [
+                {"role": type(m).__name__.replace("HumanMessage", "user").replace("AIMessage", "assistant").replace("SystemMessage", "system").lower(),
+                 "content": m.content}
+                for m in msgs if hasattr(m, "content") and m.content
+            ],
+            "total": len(msgs),
+        }
+    except Exception:
+        return {"messages": [], "total": 0}
+
+
 @router.get("/{session_id}/state")
 async def get_session_state(session_id: str):
     if not _manager:
