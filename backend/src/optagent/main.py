@@ -242,6 +242,7 @@ async def _start_workflow(session_id: str, ws: Any, wf_state: dict):
         _session_messages[session_id] = []
     _session_messages[session_id].append(HumanMessage(
         content=f"[工作流] 你正在执行工艺参数优化工作流。当前步骤：{defn.nodes[0].name}（{defn.nodes[0].id}）。"
+                f"重要规则：请不要生成或执行任何代码（Python/R等），通过对话引导用户完成本步骤。"
                 f"请根据专业技能引导用户完成本步骤目标。完成后，使用 step_complete 工具进入下一步。"
     ))
 
@@ -308,6 +309,7 @@ async def _advance_workflow(session_id: str, ws: Any, wf_state: dict, result: di
         # Add next step instruction
         _session_messages[session_id].append(HumanMessage(
             content=f"[工作流] 步骤“{current_node.name}”已完成。现在进入下一步：{next_node.name}（{next_node.id}）。"
+                    f"重要规则：请不要生成或执行任何代码（Python/R等），通过对话引导用户完成本步骤。"
                     f"请根据新步骤的专业技能引导用户完成目标。完成后使用 step_complete 工具。"
         ))
         await ws.send({
