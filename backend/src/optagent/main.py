@@ -29,7 +29,7 @@ from .models.session import NodeStatus
 from .kb.retriever import KBRetriever
 from .kb.ingestion import KBIngestion
 from .server.routes.kb import track_search as track_kb_search
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, message_to_dict, messages_from_dict
 from langchain_core.messages import SystemMessage
 
 logger = logging.getLogger("optagent")
@@ -137,6 +137,11 @@ async def session_websocket(websocket: WebSocket, session_id: str):
     ws = WSConnection(websocket)
     _active_ws[session_id] = ws
 
+    # Restore conversation messages from persistent store
+    msg_json = store.load_session_messages(session_id)
+    if msg_json:
+        _session_messages[session_id] = messages_from_dict(json.loads(msg_json))
+
     heartbeat_task = asyncio.create_task(ws.heartbeat())
     wf_state = _get_workflow_state(session_id)
     cancel_event = asyncio.Event()
@@ -169,6 +174,8 @@ async def session_websocket(websocket: WebSocket, session_id: str):
                     await _start_workflow(session_id, ws, wf_state)
                 # Process message through agent and stream response
                 result = await _chat_with_agent(session_id, content, ws, cancel_event)
+                # Persist conversation messages to store and trim if needed
+                _persist_session_messages(session_id)
                 # If step_complete was called, advance to next workflow node
                 if result.get("step_completed") and not wf_state.get("no_workflow"):
                     await _advance_workflow(session_id, ws, wf_state, result)
@@ -316,6 +323,27 @@ async def _advance_workflow(session_id: str, ws: Any, wf_state: dict, result: di
             "type": "graph:end",
             "session_id": session_id,
         })
+
+MAX_CONTEXT_MESSAGES = 30
+
+def _persist_session_messages(session_id: str):
+    """Save conversation messages to store and trim if needed."""
+    messages = _session_messages.get(session_id, [])
+    if not messages:
+        return
+
+    # Trim if over threshold
+    if len(messages) > MAX_CONTEXT_MESSAGES + 10:
+        keep_count = max(MAX_CONTEXT_MESSAGES, 5)
+        trimmed = messages[-keep_count:]
+        _session_messages[session_id] = [HumanMessage(content="[前几轮对话已折叠，继续当前对话]")] + trimmed
+
+    # Save to store
+    try:
+        msg_json = json.dumps([message_to_dict(m) for m in _session_messages[session_id]])
+        store.save_session_messages(session_id, msg_json)
+    except Exception:
+        logger.exception("Failed to persist session messages")
 
 
 def _build_skills_system_prompt() -> list[SystemMessage]:

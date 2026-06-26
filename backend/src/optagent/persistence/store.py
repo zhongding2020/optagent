@@ -30,13 +30,19 @@ class SessionStore:
                     checkpoint_id TEXT,
                     current_node TEXT,
                     node_statuses TEXT DEFAULT '{}',
-                    node_results TEXT DEFAULT '{}'
+                    node_results TEXT DEFAULT '{}',
+                    messages TEXT DEFAULT '[]'
                 )
             """)
         # Migration: add column for existing databases
         try:
             with self._get_conn() as conn:
                 conn.execute("ALTER TABLE sessions ADD COLUMN node_results TEXT DEFAULT '{}'")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            with self._get_conn() as conn:
+                conn.execute("ALTER TABLE sessions ADD COLUMN messages TEXT DEFAULT '[]'")
         except sqlite3.OperationalError:
             pass
 
@@ -117,3 +123,19 @@ class SessionStore:
     def delete(self, session_id: str):
         with self._get_conn() as conn:
             conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+
+    def save_session_messages(self, session_id: str, messages_json: str):
+        with self._get_conn() as conn:
+            conn.execute(
+                "UPDATE sessions SET messages = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (messages_json, session_id),
+            )
+
+    def load_session_messages(self, session_id: str) -> Optional[str]:
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT messages FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+            if not row:
+                return None
+            return row["messages"]
