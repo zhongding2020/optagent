@@ -101,6 +101,19 @@ export default function WorkflowDetail() {
     }).catch(() => {})
   }, [id])
 
+  const handleUpload = async (file: File) => {
+    if (!id) return
+    try {
+      const result: any = await api.uploadSessionFile(id, file)
+      send({
+        type: 'user:message',
+        content: `I've uploaded a file "${result.filename}" with ${result.total_rows} rows and columns: ${result.columns.join(', ')}. Please analyze this data — show correlations, factor importance, and any insights.`
+      })
+    } catch (e) {
+      console.error('Upload failed', e)
+    }
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Top bar */}
@@ -135,7 +148,7 @@ export default function WorkflowDetail() {
         {/* Chat area */}
         <div className="flex-1 flex flex-col min-w-0">
           <AgentChat messages={[...initialHistory, ...chatMessages]} />
-          <ChatInput onSend={(msg) => send({ type: 'user:message', content: msg })} />
+          <ChatInput onSend={(msg) => send({ type: 'user:message', content: msg })} onUpload={handleUpload} />
         </div>
 
         {/* Right sidebar */}

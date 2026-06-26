@@ -42,6 +42,11 @@ export const api = {
   deleteKbDocument: (id: string) =>
     request<{ ok: boolean }>(`/kb/documents/${id}`, { method: 'DELETE' }),
   searchKb: (q: string) => request<Record<string, unknown>[]>(`/kb/search?q=${encodeURIComponent(q)}&top_k=5`),
+  uploadSessionFile: (sessionId: string, file: File) => {
+    const form = new FormData()
+    form.append("file", file)
+    return fetch(BASE + `/sessions/${sessionId}/upload`, { method: "POST", body: form }).then(r => r.json())
+  },
   getAnalysisData: (sessionId: string) =>
     request<Record<string, unknown>>(`/sessions/${sessionId}/data`),
 }

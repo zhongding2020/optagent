@@ -1,9 +1,12 @@
 import json
-from fastapi import APIRouter, HTTPException
+import csv, io, uuid, logging
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from ...models.session import SessionCreate
 from langchain_core.messages import messages_from_dict
+from ...agent.tools import store_uploaded_data
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+logger = logging.getLogger("optagent.routes.sessions")
 
 _manager = None
 _store = None
@@ -126,3 +129,44 @@ async def terminate_session(session_id: str):
         raise HTTPException(503, "Not initialized")
     _manager.terminate(session_id)
     return {"ok": True}
+
+
+@router.post("/{session_id}/upload")
+async def upload_session_file(session_id: str, file: UploadFile = File(...)):
+    if not _store:
+        raise HTTPException(503, "Not initialized")
+    if not file.filename:
+        raise HTTPException(400, "No file provided")
+    
+    # Read and parse file
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")  # Handle BOM
+    except UnicodeDecodeError:
+        raise HTTPException(400, "File must be UTF-8 encoded")
+    
+    # Parse CSV
+    try:
+        reader = csv.DictReader(io.StringIO(text))
+        columns = reader.fieldnames or []
+        rows = []
+        for row in reader:
+            rows.append([row.get(c, "") for c in columns])
+    except Exception as e:
+        raise HTTPException(400, f"Failed to parse CSV: {e}")
+    
+    if not columns:
+        raise HTTPException(400, "No columns found in CSV file")
+    
+    data = {"columns": columns, "rows": rows, "filename": file.filename}
+    data_key = str(uuid.uuid4())
+    store_uploaded_data(data_key, data)
+    store_uploaded_data(session_id, data)  # Convenience key
+    
+    return {
+        "data_key": data_key,
+        "filename": file.filename,
+        "columns": columns,
+        "total_rows": len(rows),
+        "preview": rows[:3],
+    }
