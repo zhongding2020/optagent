@@ -11,7 +11,7 @@ import logging
 import re
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -139,6 +139,7 @@ async def session_websocket(websocket: WebSocket, session_id: str):
 
     heartbeat_task = asyncio.create_task(ws.heartbeat())
     wf_state = _get_workflow_state(session_id)
+    cancel_event = asyncio.Event()
 
     try:
         while ws.alive:
@@ -150,6 +151,8 @@ async def session_websocket(websocket: WebSocket, session_id: str):
 
             if msg_type == "user:terminate":
                 wf_state["cancelled"] = True
+                cancel_event.set()
+                session_manager.terminate(session_id)
                 await ws.send({
                     "type": "graph:interrupted",
                     "session_id": session_id,
@@ -165,7 +168,7 @@ async def session_websocket(websocket: WebSocket, session_id: str):
                 if not wf_state.get("started") and not wf_state.get("no_workflow"):
                     await _start_workflow(session_id, ws, wf_state)
                 # Process message through agent and stream response
-                result = await _chat_with_agent(session_id, content, ws)
+                result = await _chat_with_agent(session_id, content, ws, cancel_event)
                 # If step_complete was called, advance to next workflow node
                 if result.get("step_completed") and not wf_state.get("no_workflow"):
                     await _advance_workflow(session_id, ws, wf_state, result)
@@ -180,6 +183,7 @@ async def session_websocket(websocket: WebSocket, session_id: str):
         pass
     finally:
         heartbeat_task.cancel()
+        cancel_event.set()
         _active_ws.pop(session_id, None)
         _workflow_states.pop(session_id, None, None)
 
@@ -418,7 +422,7 @@ def _fix_markdown_tables(text: str) -> str:
     return '\n'.join(result)
 
 
-async def _chat_with_agent(session_id: str, user_message: str, ws: Any):
+async def _chat_with_agent(session_id: str, user_message: str, ws: Any, cancel_event = None):
     """Process a user message through deepagents agent.
     
     Returns a dict with workflow signals:
@@ -444,6 +448,8 @@ async def _chat_with_agent(session_id: str, user_message: str, ws: Any):
             {"messages": _session_messages[session_id]},
             version="v2",
         ):
+            if cancel_event and cancel_event.is_set():
+                break
             event_name = event.get("event", "")
             data = event.get("data", {}) or {}
             name = event.get("name", "")

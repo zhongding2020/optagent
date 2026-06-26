@@ -3,6 +3,7 @@
 > 最后更新：2026-06-25 21:30
 > 最后更新：2026-06-25 22:30
 > 最后更新：2026-06-26 01:30
+> 最后更新：2026-06-26 11:00
 > 用途：追踪设计与实现的差距，持续刷新功能完成状态
 
 ---
@@ -41,9 +42,12 @@
 | # | 功能 | 描述 | 状态 | 文件 |
 |---|------|------|------|------|
 | 8 | URL 配置化 | WebSocket/API base 从 config 或环境变量读取 | [ ] | `hooks/useWebSocket.ts`, `hooks/useApi.ts` |
+ | 8 | URL 配置化 | WebSocket/API base 从环境变量读取 (VITE_WS_URL, VITE_API_URL) | [x] | `hooks/useWebSocket.ts`, `hooks/useApi.ts` |
 | 9 | 终止机制 | `SessionManager.start_execution()` 接入 `_run_workflow` | [ ] | `session_manager.py`, `main.py` |
+ | 9 | 终止机制 | cancel_event 传递到 _chat_with_agent，流式循环中检查中断 | [x] | `main.py` |
 | 10 | Checkpoint 持久化 | Session 支持断点续传 | [ ] | `workflow/builder.py`, `persistence/store.py` |
 | 11 | Loading/Error 状态 | 所有页面添加加载态和错误处理 | [ ] | `pages/*.tsx` |
+ | 11 | Loading/Error 状态 | Dashboard 添加骨架屏加载态 + 错误提示 + 重试按钮 | [x] | `pages/Dashboard.tsx` |
 
 ## P3 — 扩展能力
 

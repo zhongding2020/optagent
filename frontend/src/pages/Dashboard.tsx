@@ -6,10 +6,15 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [workflows, setWorkflows] = useState<{ name: string }[]>([])
   const [sessions, setSessions] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.listWorkflows().then(setWorkflows).catch(() => {})
-    api.listSessions().then(setSessions).catch(() => {})
+    setLoading(true)
+    Promise.all([
+      api.listWorkflows().then(setWorkflows).catch(() => {}),
+      api.listSessions().then(setSessions).catch((e) => setError(e.message)),
+    ]).finally(() => setLoading(false))
   }, [])
 
   const startSession = async (wf: string) => {
@@ -35,6 +40,25 @@ export default function Dashboard() {
         <p className="text-sm text-text-secondary">Agent-guided process parameter optimization</p>
       </div>
 
+      {error && (
+        <div className="mb-6 px-4 py-3 rounded-lg bg-danger/10 border border-danger/30 text-xs text-danger">
+          Connection error: {error}. <button onClick={() => window.location.reload()} className="underline">Retry</button>
+        </div>
+      )}
+
+      {loading ? (
+        <>
+          <div className="h-4 w-24 bg-bg-tertiary rounded animate-pulse mb-4" />
+          <div className="flex gap-3 mb-12">
+            {[1,2,3].map(i => <div key={i} className="h-12 w-36 rounded-xl bg-bg-tertiary animate-pulse" />)}
+          </div>
+          <div className="h-4 w-28 bg-bg-tertiary rounded animate-pulse mb-4" />
+          <div className="space-y-1">
+            {[1,2].map(i => <div key={i} className="h-12 w-full rounded-xl bg-bg-tertiary animate-pulse" />)}
+          </div>
+        </>
+      ) : (
+      <>
       <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">Workflows</h2>
       <div className="flex gap-3 mb-12 flex-wrap">
         {workflows.map(wf => (
@@ -96,6 +120,8 @@ export default function Dashboard() {
             </button>
           ))}
         </div>
+      )}
+      </>
       )}
     </div>
   )
