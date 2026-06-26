@@ -26,6 +26,14 @@ from .skills.registry import SkillRegistry
 from .workflow.loader import WorkflowLoader
 from .agent.factory import create_optagent_agent, _resolve_model
 from .agent.tools import init_tools, query_knowledge_base, step_complete
+from .agent.analysis_tools import (
+    correlation_analysis,
+    factor_importance,
+    design_experiment,
+    response_surface,
+    pareto_analysis,
+    anova_one_way,
+)
 from .models.session import NodeStatus
 from .kb.retriever import KBRetriever
 from .kb.ingestion import KBIngestion
@@ -91,7 +99,10 @@ async def lifespan(app: FastAPI):
     workflow_loader = WorkflowLoader(config.workflows.directory)
 
     # Init agent
-    tools = [query_knowledge_base, step_complete]
+    tools = [query_knowledge_base, step_complete,
+             correlation_analysis, factor_importance,
+             design_experiment, response_surface,
+             pareto_analysis, anova_one_way]
     agent = create_optagent_agent(config, tools=tools)
     chat_model = _resolve_model(config)
 
